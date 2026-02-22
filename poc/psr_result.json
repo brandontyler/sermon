@@ -1,0 +1,45 @@
+{
+  "pipeline": "psr-poc-v1",
+  "timestamp": "2026-02-22T15:05:10Z",
+  "source": "mock",
+  "transcript": {
+    "text": "Good morning church, welcome welcome. Um, it's so good to see everyone here today.\nI want to, uh, talk to you about something that's been on my heart. If you have your\nBibles, turn with me to Romans chapter 8, starting in verse 28. And we know that in\nall things God works for the good of those who love him, who have been called according\nto his purpose. You know, this is one of those verses that, like, we hear all the time,\nbut do we really understand what Paul is saying here?\n\nSee, Paul isn't saying that everything that happens is good. He's saying God works IN\nall things. There's a difference, right? Um, let me give you an example. When I was\ngoing through a really tough season about five years ago, I remember sitting in my car\njust, you know, wondering if God even cared. And I opened my Bible to this exact passage.\nAnd it hit me differently that day.\n\nThe word \"works\" here in the Greek is \"synergeo\" \u2014 it's where we get our word \"synergy.\"\nGod is actively working, cooperating with circumstances, to produce good. Not passive.\nNot distant. Active. And the scope is \"all things\" \u2014 not some things, not the easy things.\nALL things. That includes your worst day. That includes, uh, the diagnosis you just got.\nThat includes the relationship that fell apart.\n\nNow look at verse 29 \u2014 \"For those God foreknew he also predestined to be conformed to\nthe image of his Son.\" The goal isn't comfort. The goal is Christlikeness. God's definition\nof \"good\" in verse 28 is defined by verse 29. He's making you look like Jesus. And sometimes\nthat process, like, it hurts. But it's good.\n\nSo here's my challenge to you this morning. This week, when something hard happens \u2014 and it\nwill \u2014 I want you to pause and say, \"God is working in this.\" Not \"God caused this.\" Not\n\"this is fine.\" But \"God is actively working in this for my good, and His good is making me\nmore like Christ.\" Can you do that? Let's pray.",
+    "word_count": 355,
+    "duration_seconds": 240
+  },
+  "psr": {
+    "delivery_score": 74,
+    "filler_words": {
+      "um": 3,
+      "uh": 2,
+      "you know": 2,
+      "like": 5,
+      "right": 1
+    },
+    "filler_total": 13,
+    "estimated_wpm": 138,
+    "scripture_refs": [
+      "Romans 8:28",
+      "Romans 8:29"
+    ],
+    "segment_types": {
+      "scripture_reading": 0.1,
+      "teaching": 0.4,
+      "anecdote": 0.2,
+      "application": 0.15,
+      "prayer": 0.05,
+      "other": 0.1
+    },
+    "strengths": [
+      "Good use of Greek word study (synergeo)",
+      "Clear call to action at the end",
+      "Effective personal anecdote"
+    ],
+    "improvements": [
+      "Reduce filler words (um, uh, like, you know) \u2014 15+ occurrences",
+      "Could spend more time in the actual text vs illustration",
+      "Vary pacing \u2014 delivery feels consistent throughout"
+    ],
+    "summary": "Solid sermon with strong biblical grounding in Romans 8:28-29. The Greek word study adds depth. Main area for improvement is filler word frequency which slightly undermines delivery confidence."
+  }
+}
