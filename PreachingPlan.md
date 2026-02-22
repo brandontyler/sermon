@@ -31,14 +31,22 @@ Built entirely on Azure to showcase its AI, serverless, and data platform capabi
 
 ### Scholarly Verification Engine
 
-Biblical Accuracy uses a two-layer approach:
+Biblical Accuracy uses a three-layer approach:
 
 1. **Curated Theological Database** — Bible text corpus (multiple translations: ESV, NIV, KJV, NASB), cross-reference tables, verse-to-topic mappings
-2. **Commentary Corpus** — Established commentaries (Matthew Henry, Spurgeon, Calvin, Wesley, modern evangelical/reformed scholars) indexed for RAG retrieval
+2. **Commentary Corpus** — Established commentaries indexed for RAG retrieval, organized by theological tradition to avoid scoring bias:
+   - **Reformed**: Calvin's Commentaries, Matthew Henry, Spurgeon, R.C. Sproul
+   - **Wesleyan/Arminian**: Wesley's Notes, Adam Clarke, Ben Witherington III
+   - **Baptist**: John Gill, A.T. Robertson, John MacArthur
+   - **Broadly Evangelical**: D.A. Carson, N.T. Wright, Craig Keener, ESV Study Bible notes
+   - **Historical/Academic**: F.F. Bruce, Bruce Metzger, Gordon Fee
+   - The system identifies the pastor's likely theological tradition (via denomination tag or inference) and weights verification accordingly — a Reformed pastor teaching election from Ephesians 1 shouldn't be flagged just because Arminian commentators disagree
 3. **AI Cross-Reference** — Azure OpenAI compares the pastor's claims about a passage against the commentary corpus and flags:
-   - ✅ Aligned with mainstream scholarship
-   - ⚠️ Controversial/debated interpretation (with sources for both sides)
-   - ❌ Contradicts the passage text or broad scholarly consensus
+   - ✅ **Aligned** — Supported by commentators within the pastor's tradition AND not contradicted by the passage text
+   - ⚠️ **Debated** — Valid interpretation within one tradition but contested by others (shows sources for both sides). Does NOT penalize the score — only informs the viewer
+   - ❌ **Contradicts** — Claims something the passage text plainly does not say, or misattributes a quote/reference. Reserved for clear factual errors, not theological disagreements
+
+**Important design principle:** Biblical Accuracy measures whether the pastor *correctly handles the text they reference* — not whether their theology is "right." A Calvinist and an Arminian preaching Romans 9 can both score 90+ if they accurately represent what the text says and honestly engage the interpretive questions. The score penalizes misquoting, out-of-context proof-texting, and factual errors — not denominational convictions.
 
 ---
 
@@ -78,7 +86,7 @@ Biblical Accuracy uses a two-layer approach:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        FRONTEND                                  │
-│  Azure Static Web Apps (React/Next.js)                          │
+│  Azure Static Web Apps (Next.js + TypeScript)                   │
 │  Azure CDN / Front Door                                          │
 │  Azure AD B2C (auth — email + Google/Microsoft/Apple)           │
 └──────────────────────────┬──────────────────────────────────────┘
@@ -86,7 +94,7 @@ Biblical Accuracy uses a two-layer approach:
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                        API LAYER                                 │
 │  Azure API Management                                            │
-│  Azure Functions (Node.js/Python — serverless)                  │
+│  Azure Functions (Python — serverless)                           │
 └──────────┬───────────────┬──────────────┬───────────────────────┘
            │               │              │
 ┌──────────▼───┐  ┌───────▼────────┐  ┌──▼──────────────────────┐
@@ -109,12 +117,6 @@ Biblical Accuracy uses a two-layer approach:
                   │ (sentiment,    │
                   │  key phrases,  │
                   │  topic model)  │
-                  │                │
-                  │ Azure AI       │
-                  │ Video Indexer  │
-                  │ (if video —    │
-                  │  gestures,     │
-                  │  scene detect) │
                   └────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -136,7 +138,7 @@ Biblical Accuracy uses a two-layer approach:
 
 | Azure Service | Purpose |
 |--------------|---------|
-| **Static Web Apps** | Host React/Next.js frontend with built-in auth integration |
+| **Static Web Apps** | Host Next.js frontend with built-in auth integration |
 | **Azure AD B2C** | User auth — email signup + Google/Microsoft/Apple social login |
 | **API Management** | API gateway, rate limiting, analytics |
 | **Azure Functions** | Serverless API endpoints and processing logic |
@@ -146,7 +148,6 @@ Biblical Accuracy uses a two-layer approach:
 | **AI Speech Service** | Transcription with speaker diarization, word-level timestamps |
 | **Azure OpenAI (GPT-4)** | Sermon analysis, scoring, segment classification, commentary cross-reference |
 | **AI Language Service** | Sentiment analysis, key phrase extraction, topic modeling |
-| **AI Video Indexer** | Video-specific analysis (if video uploaded) — scene detection, visual cues |
 | **Cosmos DB** | NoSQL store for sermon metadata, ratings, pastor profiles, user data |
 | **AI Search** | Full-text + semantic search across all sermons and transcripts |
 | **Redis Cache** | Leaderboard caching, hot pastor profiles, trending sermons |
@@ -164,14 +165,13 @@ Biblical Accuracy uses a two-layer approach:
 ### Upload Flow
 
 ```
-User uploads video/audio (or pastes YouTube/Vimeo URL)
+User uploads video/audio file directly
     │
     ▼
-1. Azure Function: Validate upload, create sermon record in Cosmos DB (status: processing)
+1. Azure Function: Validate upload (file type, size, duration check), create sermon record in Cosmos DB (status: processing)
     │
     ▼
-2. If YouTube/Vimeo URL → Azure Function: Download via yt-dlp, store in Blob Storage
-   If direct upload → Store in Blob Storage
+2. Store file in Azure Blob Storage
     │
     ▼
 3. Service Bus: Queue processing job
@@ -222,8 +222,12 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
   "church": "Grace Community Church",
   "duration": 2847,
   "mediaUrl": "https://blob.../sermon.mp4",
-  "sourceUrl": "https://youtube.com/watch?v=...",
   "status": "complete",
+  "moderation": {
+    "status": "approved",
+    "flags": [],
+    "reviewedAt": "2026-02-22T10:05:00Z"
+  },
   "transcript": {
     "fullText": "...",
     "segments": [
@@ -294,6 +298,8 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
   "name": "Pastor John Smith",
   "claimed": true,
   "claimedBy": "user-uuid",
+  "optedOut": false,
+  "visibility": "public",
   "denomination": "Baptist",
   "church": "First Baptist Church",
   "location": "Dallas, TX",
@@ -325,7 +331,7 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 | Page | Description |
 |------|-------------|
 | **Home** | Trending sermons, top-rated pastors, recent uploads, search bar |
-| **Upload** | Drag-and-drop video/audio or paste YouTube/Vimeo URL. Tag pastor name, church, denomination, date |
+| **Upload** | Drag-and-drop video/audio file. Tag pastor name, church, denomination, date. Accepted formats: MP3, MP4, WAV, M4A, WEBM. Max 2 hours / 2GB. |
 | **Sermon Detail** | Full PSR scorecard, transcript with segment highlighting, scripture verification results, analytics charts (time breakdown pie, sentiment arc line, filler word timeline) |
 | **Pastor Profile** | Photo, bio, church, denomination. PSR trend over time, category radar chart, sermon history, strengths/improvements. Follow button. Claim profile option. |
 | **Leaderboards** | Top PSR this month, most improved, most sermons analyzed. Filter by denomination, time period |
@@ -348,10 +354,10 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 
 ### In Scope
 - User signup (email + social login via Azure AD B2C)
-- Upload video/audio (direct + YouTube URL)
+- Direct upload of video/audio files (MP3, MP4, WAV, M4A, WEBM — max 2 hours / 2GB)
 - Transcription via Azure AI Speech
 - Segment classification via Azure OpenAI
-- Scripture detection and basic verification
+- Scripture detection and basic verification (denomination-aware)
 - PSR scoring (all 8 categories + composite)
 - Sermon detail page with full scorecard
 - Pastor profile with trend tracking
@@ -359,11 +365,14 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 - Leaderboards (top PSR, most improved)
 - Follow pastors, create playlists
 - Pastor profile claiming
+- Content moderation (automated + manual review queue)
+- Pastor opt-out / removal request workflow
 - English only
 - Up to 2 hours sermon length
 
 ### Out of Scope (Future Phases)
 - Monetization / premium tiers
+- YouTube/Vimeo URL import (legal risk — ToS prohibit downloading)
 - Multi-language support
 - Mobile native apps (web-responsive only for MVP)
 - Comments/discussion
@@ -372,6 +381,52 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 - Church organization accounts
 - API for third-party integrations
 - Sermon comparison (side-by-side two sermons)
+
+---
+
+## Content Moderation
+
+### Automated Checks (on upload)
+
+- **File validation** — Verify file type, duration (max 2 hours), file size (max 2GB)
+- **Audio content check** — After transcription, run a classification pass to verify the content is a sermon/religious talk (not music, podcasts, random audio, or abusive content)
+- **Duplicate detection** — Hash-based check to prevent the same file from being uploaded twice
+- **Rate limiting** — Max 5 uploads per user per day to prevent spam
+
+### Manual Review Queue
+
+- Uploads flagged by automated checks go to a moderation queue
+- Admin dashboard to approve, reject, or remove content
+- Rejection reasons: not a sermon, copyrighted content, abusive/spam, duplicate
+
+### Reporting
+
+- Users can flag/report any sermon for review
+- Report reasons: not a sermon, incorrect attribution, copyrighted, offensive
+- Reports trigger manual review
+
+---
+
+## Pastor Consent & Opt-Out
+
+### How It Works
+
+- **Anyone can upload** a sermon and tag a pastor — this is core to the platform (sermons are public content)
+- **Pastors can claim their profile** — verify identity via email from their church domain, link to church website, or manual review
+- **Claimed pastors can:**
+  - Edit their bio, photo, and church info
+  - See analytics dashboards for their own sermons
+  - Request removal of specific sermons (reviewed within 48 hours)
+  - Set their profile to **unlisted** (sermons still analyzed but hidden from leaderboards and search)
+  - Fully **opt out** — all sermons and profile data removed, pastor name added to a block list to prevent re-upload
+- **Unclaimed profiles** are public by default but display a "Not yet claimed" badge
+- **DMCA/takedown process** — standard takedown request form for copyright claims
+
+### Data Retention
+
+- When a pastor opts out, sermon data is soft-deleted (retained 30 days for appeals, then hard-deleted)
+- Media files are deleted immediately on opt-out
+- Aggregated/anonymized analytics may be retained for platform-level statistics
 
 ---
 
@@ -390,10 +445,10 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React or Next.js, TypeScript, Tailwind CSS |
+| Frontend | Next.js, TypeScript, Tailwind CSS |
 | Auth | Azure AD B2C |
-| API | Azure Functions (Python or Node.js) |
-| Orchestration | Azure Durable Functions |
+| API | Azure Functions (Python) |
+| Orchestration | Azure Durable Functions (Python) |
 | Database | Azure Cosmos DB (NoSQL) |
 | Search | Azure AI Search |
 | Cache | Azure Cache for Redis |
@@ -401,7 +456,7 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 | AI - Speech | Azure AI Speech Service |
 | AI - Language | Azure AI Language Service |
 | AI - LLM | Azure OpenAI (GPT-4) |
-| AI - Video | Azure AI Video Indexer (Phase 2) |
+| AI - Video | Azure AI Video Indexer (future phase) |
 | Messaging | Azure Service Bus + Event Grid |
 | CDN | Azure Front Door |
 | IaC | Bicep |
@@ -417,26 +472,39 @@ User uploads video/audio (or pastes YouTube/Vimeo URL)
 | Static Web Apps | Free tier |
 | Azure Functions | ~$5 (consumption) |
 | Cosmos DB | ~$25 (autoscale, low RU) |
-| Blob Storage | ~$5 (depending on uploads) |
+| Blob Storage | ~$5-20 (depending on uploads) |
 | AI Speech | ~$1/hr of audio transcribed |
-| Azure OpenAI | ~$0.01-0.03 per 1K tokens |
-| AI Search | ~$75 (basic tier) |
+| Azure OpenAI | ~$0.50-2.00 per sermon (multiple analysis passes on 8-10K word transcripts) |
+| AI Search | ~$250 (S1 tier for semantic/vector search) |
 | Redis Cache | ~$15 (basic) |
 | Service Bus | ~$10 (basic) |
 | AD B2C | Free up to 50K MAU |
-| **Total estimate** | **~$150-300/mo at low volume** |
+| **Total estimate** | **~$350-500/mo at low volume** |
 
-*Costs scale with usage — primarily driven by sermon processing (Speech + OpenAI tokens).*
+*Costs scale with usage — primarily driven by sermon processing (Speech + OpenAI tokens). At 100 sermons/month, OpenAI alone could be $50-200. AI Search is a fixed cost regardless of volume — consider starting with basic full-text search and adding semantic search when traffic justifies it.*
 
 ---
 
 ## Next Steps
 
+### Phase 0.5 — Core Pipeline (validate the PSR concept)
 1. Set up Azure resource group and DevOps project
-2. Create Bicep templates for core infrastructure
+2. Create Bicep templates for core infrastructure (Functions, Blob, Cosmos, Speech, OpenAI)
 3. Build upload → transcribe → store pipeline (minimal viable pipeline)
-4. Build PSR scoring engine with Azure OpenAI
-5. Build frontend with sermon detail page
-6. Add pastor profiles and leaderboards
-7. Add scripture verification with commentary corpus
-8. Polish, test, deploy to production
+4. Build PSR scoring engine with Azure OpenAI (all 8 categories)
+5. **Prototype Biblical Accuracy in isolation** — build the commentary corpus RAG, test denomination-aware verification against sample sermons, iterate on scoring calibration before integrating
+6. Build frontend: upload page + sermon detail page with full scorecard
+
+### Phase 1 — MVP (public launch)
+7. Add pastor profiles, claiming workflow, and opt-out mechanism
+8. Add leaderboards and basic search
+9. Add content moderation pipeline (automated checks + admin review queue)
+10. Add user features: follow pastors, playlists, account page
+11. Polish, test, deploy to production
+
+### Phase 2 — Growth
+12. Semantic/vector search upgrade (AI Search S1)
+13. Video-specific analysis (Video Indexer)
+14. Multi-language support
+15. Church organization accounts
+16. Sermon comparison (side-by-side)
