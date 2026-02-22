@@ -616,7 +616,7 @@ This is a **collaborative learning project** with two purposes:
 Each developer uses the AI tools they have access to. The code is the common ground.
 
 **Brandon's Stack:**
-- **Claude Code / kiro-cli** — primary AI coding agent (terminal-first, autonomous, reads codebase and drives edits)
+- **kiro-cli** — primary AI coding agent (terminal-first, autonomous, reads codebase and drives edits). This is what's running right now in this Discord channel
 - **`az` CLI + `azd`** — learning Azure alongside the project
 - Workflow: terminal-driven, agent does the heavy lifting
 
@@ -628,13 +628,13 @@ Each developer uses the AI tools they have access to. The code is the common gro
 - Workflow: VS Code-driven, Copilot assists inline
 
 **The Gap (and How We Bridge It):**
-Microsoft doesn't have a true Claude Code equivalent — a local, terminal-first, autonomous coding agent that reads your whole codebase, makes multi-file edits, runs commands, and iterates in a loop. Copilot is excellent at *assisting* but not at *driving*.
+Microsoft doesn't have a true kiro-cli equivalent — a local, terminal-first, autonomous coding agent that reads your whole codebase, makes multi-file edits, runs commands, and iterates in a loop. Copilot is excellent at *assisting* but not at *driving*.
 
 How we work around this:
 1. Both devs work on the same GitHub repo — tool choice is personal, code is shared
 2. Brandon screen-shares / works in Discord so friend can see the CLI agent workflow in action
 3. Friend uses Copilot Coding Agent for autonomous PR work (assign it a GitHub issue, it opens a PR)
-4. For pair sessions: Brandon drives with Claude Code while friend watches and learns the agent-first approach
+4. For pair sessions: Brandon drives with kiro-cli while friend watches and learns the agent-first approach
 5. GPT-4o (which powers Copilot) is a strong model — the gap is in the *agent harness*, not the model quality
 
 **Core Azure CLI Tools (Both Developers):**
@@ -649,7 +649,7 @@ Brandon:
 - [ ] Install `az` CLI and run `az login`
 - [ ] Install `azd` CLI
 - [ ] Install `func` (Azure Functions Core Tools)
-- [ ] Claude Code / kiro-cli (already set up)
+- [ ] kiro-cli (already set up and running)
 
 Friend:
 - [ ] `az` CLI + `azd` + `func` (likely already has these)
