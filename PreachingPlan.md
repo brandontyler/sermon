@@ -593,3 +593,47 @@ If you're new to building AI-powered apps, here's what's happening under the hoo
 14. Multi-language support
 15. Church organization accounts
 16. Sermon comparison (side-by-side)
+
+---
+
+## Team & Collaboration
+
+### Who's Building This
+
+| Person | Background | Role |
+|--------|-----------|------|
+| **Brandon** | AWS developer, software engineer, experienced with AI coding agents (kiro-cli, Claude Code) | Architecture, AI agent workflow, mentoring on dev process |
+| **Friend** | Azure sales data engineer, developer-savvy | Azure expertise, data pipeline design, learning to build from idea to product |
+
+### The Goal
+
+This is a **collaborative learning project** with two purposes:
+1. **Build PSR** — take the idea from plan to working product on Azure
+2. **Show the process** — Brandon demonstrates how to use AI coding agents to go from idea to code, while learning Azure alongside his friend who knows the platform
+
+### Development Tooling — Azure Developer Workflow
+
+Since this project lives on Azure, here are the CLI tools for the dev workflow:
+
+**Core Azure CLI Tools:**
+- **`az` (Azure CLI)** — Azure resource management (equivalent of `aws` CLI). Install: `curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash`
+- **`azd` (Azure Developer CLI)** — scaffolds, provisions, and deploys Azure apps from templates. Think of it as Azure's answer to SAM/CDK. Install: `curl -fsSL https://aka.ms/install-azd.sh | bash`
+- **`func` (Azure Functions Core Tools)** — local dev/test for Azure Functions. Install: `npm i -g azure-functions-core-tools@4`
+- **`bicep`** — Azure IaC (bundled with `az`). Equivalent of CloudFormation/CDK
+
+**AI Coding Agents (Terminal-First):**
+- **Claude Code / kiro-cli** — Brandon's primary agent. Cloud-agnostic, works great with Azure projects. This is what we'll use day-to-day for coding
+- **GitHub Copilot CLI (`gh copilot`)** — Microsoft's AI CLI assistant. Good for Azure-specific command suggestions and explanations. Install: `gh extension install github/gh-copilot`
+- **`az interactive`** — Azure CLI's built-in AI-assisted interactive mode with command suggestions
+
+**Why Claude Code / kiro-cli for an Azure project?**
+AI coding agents don't care what cloud you're on — they read code, write code, and run commands. The Azure-specific knowledge comes from docs and the `az`/`azd` CLIs. Using Claude Code here lets Brandon teach the AI agent workflow he knows while building on Azure infrastructure his friend knows.
+
+**Setup Checklist (Both Developers):**
+- [ ] Install `az` CLI and run `az login`
+- [ ] Install `azd` CLI
+- [ ] Install `func` (Azure Functions Core Tools)
+- [ ] Install `gh` CLI + `gh copilot` extension
+- [ ] Set up Claude Code or kiro-cli
+- [ ] Create shared Azure resource group for the project
+- [ ] Set up GitHub repo with branch protection
