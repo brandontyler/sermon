@@ -407,6 +407,46 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 
 ---
 
+## Data Sources (Free / Open)
+
+### Bible Text APIs (Scripture Reference & Verification)
+
+| Source | URL | Notes |
+|--------|-----|-------|
+| **Bible API** | bible-api.com | Completely free, no auth, returns verse text as JSON. Great for MVP |
+| **API.Bible** | scripture.api.bible | Free tier, multiple translations (ESV, KJV, NIV, etc.), requires API key |
+| **ESV API** | api.esv.org | Free for non-commercial use, high-quality ESV text |
+
+### Sermon Text Repositories (Comparison Corpus)
+
+| Source | URL | Notes |
+|--------|-----|-------|
+| **Project Gutenberg** | gutenberg.org | Public domain sermon collections — Spurgeon, Wesley, Edwards, Whitefield. Best for historical baseline comparison. No licensing issues |
+| **SermonAudio** | sermonaudio.com | Huge archive with transcripts. Has API for searching by speaker, topic, scripture. Check terms for bulk use |
+| **OpenBible.info** | openbible.info | Cross-references, topical indexes, sentiment data for Bible passages |
+
+### NLP Metrics We Can Derive
+
+- **Scripture density** — verses referenced per minute of sermon
+- **Topical alignment** — compare sermon themes against a tagged corpus
+- **Readability scores** — Flesch-Kincaid on transcript text
+- **Sentiment arc** — emotional trajectory through the sermon
+- **Cross-reference depth** — how interconnected are the scripture references
+- **Theological vocabulary richness** — unique theological terms vs common speech
+
+### Academic / Research Baselines
+
+| Source | URL | Notes |
+|--------|-----|-------|
+| **COCA** | corpus.byu.edu/coca | Corpus of Contemporary American English — baseline for comparing sermon language against everyday speech |
+| **Project Gutenberg Sermons** | gutenberg.org | Historical sermon collections for benchmarking against the greats |
+
+### MVP Recommendation
+
+Start with **Bible API** (free, no auth) for scripture lookups and a small set of **Project Gutenberg** public domain sermons as the comparison baseline. Zero licensing headaches, zero cost. Add SermonAudio and richer APIs in Phase 1 when we need scale.
+
+---
+
 ## Content Moderation
 
 *Deferred to Phase 1. For MVP, uploads are invite-only / low volume — manual oversight is sufficient.*
