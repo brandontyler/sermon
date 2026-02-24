@@ -1,0 +1,63 @@
+{
+  "pipeline": "psr-poc-audio-v1",
+  "timestamp": "2026-02-24T14:09:53Z",
+  "source": "poc/samples/piper_romans_1_8.mp3",
+  "sermon_info": {
+    "title": "The Mighty and Merciful Message of Romans 1-8",
+    "preacher": "John Piper",
+    "date": "2002-09-22",
+    "source_url": "https://www.desiringgod.org/messages/the-mighty-and-merciful-message-of-romans-1-8"
+  },
+  "audio_analysis": {
+    "pitch": {
+      "mean_hz": 172.8,
+      "std_hz": 61.1,
+      "min_hz": 75.1,
+      "max_hz": 584.6,
+      "range_hz": 509.5
+    },
+    "intensity": {
+      "mean_db": 58.9,
+      "std_db": 14.3,
+      "dynamic_range_db": 79.8
+    },
+    "pauses": {
+      "count": 805,
+      "per_minute": 20.3
+    },
+    "duration_seconds": 2381.4
+  },
+  "text_analysis": {
+    "word_count": 5161,
+    "sentence_count": 312,
+    "words_per_minute": 130.0,
+    "readability": {
+      "flesch_reading_ease": 75.0,
+      "flesch_kincaid_grade": 7.1,
+      "gunning_fog": 9.6,
+      "smog_index": 9.8,
+      "dale_chall": 8.2
+    },
+    "filler_words": {
+      "so": 43,
+      "like": 9,
+      "right": 7
+    },
+    "filler_total": 59,
+    "filler_per_minute": 1.5,
+    "imperative_sentences": 15,
+    "scripture_references": [
+      "Romans 15:24 (from 'chapter 15 verse 24')",
+      "Romans 1:5 (from 'Chapter 1 verse 5')",
+      "Romans 1:16 (from 'chapter 1 verse 16')",
+      "Romans 1:18 (from 'chapter 1, verse 18')",
+      "Romans 1:18 (from 'chapter 1, verse 18')",
+      "Romans 3:21 (from 'chapter 3 verse 21')",
+      "revelation 3:28 (from 'Chapter 3, verse 28')",
+      "Romans 7:4 (from 'chapter 7 verse 4')",
+      "Romans 7:4 (from 'chapter 7 verse 4')"
+    ],
+    "scripture_count": 9,
+    "scripture_per_minute": 0.23
+  }
+}

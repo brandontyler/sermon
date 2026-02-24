@@ -1,1 +1,4 @@
 .kiro/
+poc/samples/
+.venv/
+__pycache__/
