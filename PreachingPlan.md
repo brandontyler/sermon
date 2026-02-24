@@ -840,160 +840,21 @@ python3 poc/scripture_analyzer.py --compare    # Also compare against Spurgeon
 
 ---
 
-## Open-Source Analysis Toolkit
+## Open-Source Analysis Tools (Supplement to Azure Services)
 
-Beyond Azure AI services (Speech, Language, OpenAI), these open-source Python libraries can run inside Azure Functions to extract metrics that cloud APIs don't provide natively. Think of this as the "analytics engine" layer — Azure handles transcription and LLM scoring, these tools handle the deterministic, reproducible measurements.
+These Python libraries run alongside Azure services to give us metrics that cloud APIs don't provide out of the box. Not needed for MVP — add in Phase 1+.
 
-### Layer 1: Audio-Level Analysis (Raw Speech Signal)
+### ⭐ Top Picks for PSR
 
-These work on the audio file directly — before or alongside transcription. They measure *how* the pastor speaks, not *what* they say.
+| Tool | `pip install` | What It Does for Us | PSR Category |
+|------|--------------|---------------------|-------------|
+| **CrisperWhisper** ⭐ | github: `nyrahealth/CrisperWhisper` | Catches every "um", "uh", stutter, false start with timestamps. Standard Whisper/Azure Speech skip these | Delivery |
+| **Parselmouth** ⭐ | `praat-parselmouth` | Pitch contour + loudness over time from audio. Detects monotone stretches, energy shifts, strategic vs hesitation pauses | Engagement, Delivery, Emotional Range |
+| **textstat** ⭐ | `textstat` | Readability grade level (Flesch-Kincaid, etc.) in one call. Is the sermon accessible or PhD-level? | Clarity |
+| **spaCy** ⭐ | `spacy` | NLP foundation — sentence parsing, POS tagging, imperative detection ("Go and do...") for Application scoring | Clarity, Application |
+| **pythonbible** | `pythonbible` | Robust scripture reference parsing — handles abbreviations, ranges, multi-verse spans. Better than regex | Biblical Accuracy |
+| **SpeechBrain SER** | `speechbrain` | Emotion classification from audio (not text). Segment sermon into chunks → plot emotional arc | Emotional Range |
 
-| Tool | Install | What It Gives Us | PSR Categories |
-|------|---------|-----------------|----------------|
-| **Parselmouth** (Python Praat) | `pip install praat-parselmouth` | Pitch (F0) contour, intensity/loudness over time, speech rate, pause detection, jitter/shimmer (voice quality), formant analysis | Engagement, Delivery, Emotional Range |
-| **openSMILE** | `pip install opensmile` | 6,000+ acoustic features in one call — energy, spectral, MFCC, pitch, voice quality. Industry standard for speech emotion recognition | Engagement, Emotional Range, Delivery |
-| **librosa** | `pip install librosa` | Spectrograms, tempo/beat tracking, energy envelope, zero-crossing rate, chromagram. Great for detecting energy shifts and pacing changes | Engagement, Delivery |
-| **pyAudioAnalysis** | `pip install pyAudioAnalysis` | Audio segmentation (speech vs silence vs music), speaker diarization, emotion classification from audio features | Engagement, Emotional Range |
+### Key Idea
 
-**What this unlocks that Azure doesn't:**
-- Precise pitch contour over the entire sermon → "monotone detector" (low pitch variance = low engagement score)
-- Loudness dynamics → energy map showing where the pastor gets passionate vs flat
-- Pause analysis → strategic pauses (good) vs hesitation pauses (filler words)
-- Voice quality metrics (jitter/shimmer) → vocal fatigue detection over long sermons
-
-**Example: Parselmouth pitch + intensity extraction**
-```python
-import parselmouth
-snd = parselmouth.Sound("sermon.wav")
-pitch = snd.to_pitch()  # F0 contour
-intensity = snd.to_intensity()  # loudness over time
-# pitch.selected_array → numpy array of pitch values per frame
-# intensity.values → numpy array of dB values per frame
-```
-
-### Layer 2: Speech Emotion Recognition (SER)
-
-Detect emotions directly from the audio signal — independent of transcript text. This is how we build the "Emotional Range" score with real data, not just sentiment analysis on words.
-
-| Tool | Install | What It Gives Us | PSR Categories |
-|------|---------|-----------------|----------------|
-| **SpeechBrain** (wav2vec2 SER) | `pip install speechbrain` | Emotion classification per audio segment: angry, happy, sad, neutral, fearful, surprised, disgusted. Pre-trained on IEMOCAP dataset | Emotional Range |
-| **HuggingFace wav2vec2 SER models** | `pip install transformers` | Same as above, multiple fine-tuned models available. `speechbrain/emotion-recognition-wav2vec2-IEMOCAP` is the go-to | Emotional Range |
-| **Emotion2Vec** | HuggingFace model | Newer model with arousal/valence/dominance scores (continuous, not just categories). Better for tracking emotional *arc* over time | Emotional Range, Engagement |
-
-**What this unlocks:**
-- Segment the sermon into 30-second chunks → classify emotion per chunk → plot the emotional arc
-- Compare emotional trajectory to "ideal" patterns (e.g., build tension → climax → resolution)
-- Detect monotone stretches (same emotion classification for 5+ consecutive segments)
-
-### Layer 3: Verbatim Transcription & Filler Detection
-
-Standard Whisper/Azure Speech skip filler words. These tools catch every "um", "uh", stutter, and false start — critical for our Delivery score.
-
-| Tool | Install | What It Gives Us | PSR Categories |
-|------|---------|-----------------|----------------|
-| **CrisperWhisper** | GitHub: `nyrahealth/CrisperWhisper` | Whisper variant fine-tuned for verbatim transcription — catches fillers, stutters, false starts with accurate timestamps. State-of-the-art for disfluency detection | Delivery |
-| **WhisperX** | `pip install whisperx` | Whisper + forced alignment for precise word-level timestamps + speaker diarization. Faster than vanilla Whisper | All (timestamps enable per-segment scoring) |
-| **faster-whisper** | `pip install faster-whisper` | CTranslate2-optimized Whisper — 4x faster, lower memory. Can run on CPU in Azure Functions | All (cost reduction) |
-
-**Strategy:** Use CrisperWhisper (or WhisperX) locally/in a beefier Azure container for the verbatim pass, then use the standard Azure Speech Service transcript for the "clean" version shown to users. Two transcripts: one for scoring, one for display.
-
-### Layer 4: Text Analysis (On the Transcript)
-
-Once we have text, these libraries extract structure, readability, coherence, and linguistic features — the backbone of Clarity, Application, and Time in the Word scoring.
-
-| Tool | Install | What It Gives Us | PSR Categories |
-|------|---------|-----------------|----------------|
-| **spaCy** | `pip install spacy` | Tokenization, POS tagging, NER, dependency parsing, sentence segmentation. Foundation for everything else | All text-based categories |
-| **textstat** | `pip install textstat` | Readability scores in one call: Flesch-Kincaid, Gunning Fog, SMOG, Coleman-Liau, Dale-Chall, ARI. Plus syllable/sentence/word counts | Clarity |
-| **textdescriptives** | `pip install textdescriptives` | spaCy plugin — readability, coherence (sentence-to-sentence similarity), information density, dependency distance, all in one pipeline | Clarity, Engagement |
-| **TRUNAJOD** | `pip install TRUNAJOD` | Semantic coherence, emotion lexicon scoring, pronoun density, givenness measures, narrativity. Built for discourse analysis | Clarity, Emotional Range, Engagement |
-| **Gensim** | `pip install gensim` | Topic modeling (LDA), document similarity, word embeddings. Use for: topic coherence scoring, detecting topic drift mid-sermon | Clarity, Passage Focus |
-| **VADER** (via NLTK) | `pip install nltk` | Rule-based sentiment analysis tuned for social media but works well on spoken language transcripts. Fast, no GPU needed | Emotional Range |
-| **TextBlob** | `pip install textblob` | Simple sentiment polarity + subjectivity per sentence. Good for quick sentiment arc | Emotional Range |
-
-**What this unlocks that Azure AI Language doesn't (or charges extra for):**
-- **Readability grade level** — is this sermon accessible to a general audience or PhD-level? (textstat)
-- **Sentence-to-sentence coherence** — does the sermon flow logically or jump around? (textdescriptives)
-- **Topic drift detection** — did the pastor start in Romans 8 and end up talking about politics? (Gensim LDA)
-- **Imperative sentence detection** — spaCy POS tagging finds "Go and do..." patterns → Application score
-- **Theological vocabulary richness** — unique theological terms vs total words (spaCy + custom lexicon)
-
-**Example: Full text analysis pipeline**
-```python
-import spacy, textstat
-from textdescriptives import TextDescriptives
-
-nlp = spacy.load("en_core_web_lg")
-nlp.add_pipe("textdescriptives")
-doc = nlp(transcript_text)
-
-# Readability
-flesch = textstat.flesch_reading_ease(transcript_text)
-grade = textstat.text_standard(transcript_text)
-
-# Coherence (sentence-to-sentence similarity)
-coherence = doc._.coherence  # from textdescriptives
-
-# Imperative detection (application moments)
-imperatives = [sent for sent in doc.sents
-               if sent[0].pos_ == "VERB" and sent[0].morph.get("Mood") == ["Imp"]]
-```
-
-### Layer 5: Scripture-Specific Tools
-
-Beyond our existing Bible API + regex approach, these add depth to Biblical Accuracy scoring.
-
-| Tool | Install | What It Gives Us | PSR Categories |
-|------|---------|-----------------|----------------|
-| **pythonbible** | `pip install pythonbible` | Parse and normalize scripture references, handle ranges, abbreviations, multi-verse spans. More robust than regex | Biblical Accuracy, Time in the Word |
-| **sentence-transformers** | `pip install sentence-transformers` | Semantic similarity between pastor's claim and actual verse text. Catches paraphrasing errors that keyword matching misses | Biblical Accuracy |
-
-### How These Fit Into the Azure Pipeline
-
-```
-Audio Upload → Azure Blob Storage
-    │
-    ├─► Azure AI Speech (clean transcript for display)
-    │
-    ├─► CrisperWhisper / WhisperX (verbatim transcript for scoring)
-    │       Runs in: Azure Container Instance or Functions Premium
-    │
-    ├─► Parselmouth + openSMILE (audio features)
-    │       Runs in: Azure Functions (Python)
-    │       Output: pitch contour, energy map, pause locations, voice quality
-    │
-    ├─► SpeechBrain SER (emotion per segment)
-    │       Runs in: Azure Container Instance (needs GPU for speed, CPU works)
-    │       Output: emotion labels + confidence per 30s chunk
-    │
-    ├─► spaCy + textstat + textdescriptives (text analysis)
-    │       Runs in: Azure Functions (Python)
-    │       Output: readability, coherence, topic model, imperative detection
-    │
-    ├─► pythonbible + sentence-transformers (scripture verification)
-    │       Runs in: Azure Functions (Python)
-    │       Output: normalized refs, semantic similarity scores
-    │
-    └─► Azure OpenAI GPT-4 (final scoring + summary)
-            Receives: all extracted features as structured input
-            Output: PSR scores per category + natural language summary
-```
-
-**Key insight:** By feeding GPT-4 pre-extracted features (pitch variance, readability grade, emotion arc, filler count, coherence score) instead of asking it to infer everything from raw text, we get more consistent, reproducible scores. The LLM becomes a *scorer* that weighs pre-computed metrics, not a *measurer* that guesses at them.
-
-### MVP vs Full Toolkit
-
-**MVP (Phase 0):** Just use Azure Speech + Azure OpenAI. Keep it simple. The open-source tools are Phase 1.
-
-**Phase 1 additions (highest impact, easiest to add):**
-1. **textstat** — one `pip install`, instant readability scores for Clarity
-2. **spaCy** — foundation for all text analysis, imperative detection for Application
-3. **Parselmouth** — pitch + intensity analysis for Engagement/Delivery
-4. **CrisperWhisper** — verbatim filler word detection for Delivery
-
-**Phase 2 additions (more complex, need GPU or containers):**
-1. **SpeechBrain SER** — emotion recognition for Emotional Range
-2. **openSMILE** — comprehensive acoustic features
-3. **sentence-transformers** — semantic scripture verification for Biblical Accuracy
-4. **Gensim** — topic modeling for Passage Focus drift detection
+Feed GPT-4 pre-computed metrics (pitch variance, readability grade, filler count, coherence score) instead of asking it to infer everything from raw text. More consistent, reproducible scores — the LLM becomes a *scorer* that weighs measurements, not a *measurer* that guesses.
