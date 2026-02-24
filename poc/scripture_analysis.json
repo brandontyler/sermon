@@ -1,0 +1,51 @@
+{
+  "pipeline": "psr-poc-scripture-v1",
+  "timestamp": "2026-02-24T02:32:23Z",
+  "analysis": {
+    "word_count": 355,
+    "references_found": 2,
+    "scripture_density_per_100_words": 0.56,
+    "total_cross_references": 0,
+    "avg_cross_refs_per_verse": 0.0,
+    "estimated_time_in_word_pct": 28.2,
+    "references": [
+      {
+        "book": "Romans",
+        "chapter": 8,
+        "verse_start": 28,
+        "raw": "Romans chapter 8, starting in verse 28",
+        "position": 192,
+        "verse_text": "We know that all things work together for good for those who love God, to those who are called according to his purpose.",
+        "cross_references": [],
+        "cross_reference_count": 0
+      },
+      {
+        "book": "Romans",
+        "chapter": 8,
+        "verse_start": 29,
+        "raw": "Romans 8:29 (inferred from 'verse 29')",
+        "position": 1284,
+        "verse_text": "For whom he foreknew, he also predestined to be conformed to the image of his Son, that he might be the firstborn among many brothers.",
+        "cross_references": [],
+        "cross_reference_count": 0
+      }
+    ]
+  },
+  "comparison": {
+    "spurgeon": {
+      "word_count": 258,
+      "references_found": 6,
+      "scripture_density_per_100_words": 2.33,
+      "total_cross_references": 0,
+      "estimated_time_in_word_pct": 90.3
+    },
+    "your_sermon": {
+      "word_count": 355,
+      "references_found": 2,
+      "scripture_density_per_100_words": 0.56,
+      "total_cross_references": 0,
+      "estimated_time_in_word_pct": 28.2
+    },
+    "verdict": "Spurgeon packs more scripture per 100 words \u2014 typical of expository preaching. Modern sermons tend to have more illustration and application time. Neither is wrong; it's a style difference worth tracking."
+  }
+}

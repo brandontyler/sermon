@@ -741,3 +741,99 @@ Shared:
 - [ ] Create shared Azure resource group
 - [ ] Set up GitHub repo with branch protection
 - [ ] Add both devs as collaborators
+
+---
+
+## Competitive Landscape & Inspiration
+
+### What Already Exists
+
+| Product | What It Does | How PSR Is Different |
+|---------|-------------|---------------------|
+| **Chronicle.church** ($12-35/mo) | Upload sermon audio → AI transcription, summaries, themes, discussion questions, verse detection. Aimed at pastors archiving their own sermons. No scoring. | PSR *scores* sermons with a public composite rating. Chronicle is a private study tool; PSR is a public leaderboard. |
+| **Logos Sermon Analyzer** (coming soon) | Upload recording → emotional arc, pacing metrics, vocal dynamics, coaching feedback. Part of the Logos Bible software ecosystem. | Similar analytics but no public profiles, no cross-pastor comparison, no composite score. Logos is a pastor's private tool. |
+| **SermonAI / SermonDone** | AI sermon *preparation* tools — help pastors write sermons, generate outlines, create social clips. | These help *create* sermons. PSR *evaluates* them after delivery. Completely different use case. |
+| **SermonAudio.com** | Massive sermon hosting platform (100K+ sermons). Has an API with speaker/topic/scripture indexes. No analysis or scoring. | SermonAudio is a distribution platform. PSR adds the analytics layer that SermonAudio doesn't have. |
+| **Sermon Evaluation Forms** (paper/PDF) | Seminary rubrics and church feedback forms. Manual, subjective, small sample. Gordon-Conwell, Truett Seminary, and others publish rubrics. | PSR automates what seminaries do manually. Same categories (biblical fidelity, delivery, application) but AI-scored at scale. |
+
+### Key Insight: Nobody Does Public Scoring
+
+Every existing tool is either:
+1. A **private pastor tool** (Chronicle, Logos) — pastor uploads their own sermon for self-improvement
+2. A **preparation tool** (SermonAI) — helps write sermons, not evaluate them
+3. A **hosting platform** (SermonAudio) — distribution without analysis
+4. A **manual form** (seminary rubrics) — subjective, small scale, not public
+
+**PSR's unique angle: public, data-driven, comparable scores across pastors.** Like Rotten Tomatoes for sermons or QBR for quarterbacks. Nobody is doing this.
+
+### Creative Ideas from History & Academia
+
+**1. The Seminary Rubric Approach (Digitized)**
+Seminary homiletics classes have used structured rubrics for decades. Common dimensions:
+- Exegesis/Theology (15 criteria, 1-5 scale) — is the text handled faithfully?
+- Application — does it connect to real life?
+- Presentation — delivery, eye contact, vocal variety
+- Structure — intro hook, clear points, transitions, conclusion
+
+PSR essentially automates this with AI. The Gordon-Conwell rubric and Truett Seminary survey are well-documented frameworks we can validate our categories against.
+
+**2. The "Preaching Today" Screener Model**
+Christianity Today's *Preaching Today* service had professional screeners who evaluated thousands of sermons for their subscription library. Their key finding: **"Most sermons are Scriptural, but many do not keep their finger on the text."** Listeners felt authority shift from Bible to preacher when scripture wasn't referenced frequently. This directly validates our "Time in the Word" and "Passage Focus" categories.
+
+**3. The Four-Question Test (Glen Stanton)**
+A beautifully simple framework: (1) Was Christ proclaimed clearly? (2) Was it biblically sound? (3) Was it interesting? (4) Did it ask me to do something? Four questions that map cleanly to our 8 categories. Could be a "quick score" summary view.
+
+**4. Congregation Sentiment (Future Feature)**
+Some churches use real-time audience response systems. Imagine: congregation members tap a "resonating" button during the sermon, creating a live engagement heatmap overlaid on the transcript. Crowdsourced + AI = powerful.
+
+**5. Historical Preacher Benchmarking**
+Compare modern sermons against the greats. Project Gutenberg has public domain sermons from Spurgeon (3,500+ sermons), Wesley, Edwards, Whitefield. Run them through PSR to create historical benchmarks. "Your sermon scored 78 — Spurgeon's average on Romans passages was 91." That's compelling.
+
+**6. The "Sermon DNA" Fingerprint**
+Every pastor has patterns — favorite illustrations, go-to scripture books, typical sermon length, filler word habits. Over time, PSR builds a "Sermon DNA" profile showing a pastor's signature style and how it evolves. Like a pitcher's pitch mix in baseball analytics.
+
+### Free Data Sources (Confirmed Available)
+
+| Source | Type | Access | Best For |
+|--------|------|--------|----------|
+| **SermonIndex API** (GitHub: sermonindex/audio_api) | 100K+ sermon metadata, organized by speaker/topic/scripture. Static JSON files. GPL-2.0 | Free, no auth | Building a sermon metadata corpus, speaker indexes, topic taxonomies |
+| **Bible API** (bible-api.com) | Bible text, multiple translations | Free, no auth, JSON | Scripture reference verification in MVP |
+| **API.Bible** (scripture.api.bible) | 2,500+ Bible versions, multiple languages | Free tier with API key | Multi-translation comparison |
+| **ESV API** (api.esv.org) | ESV text | Free for non-commercial | High-quality English text |
+| **OpenBible.info** | Cross-references, topical indexes, verse sentiment | Free | Cross-reference depth scoring |
+| **Project Gutenberg** | Public domain sermon texts (Spurgeon, Wesley, Edwards, etc.) | Free, no restrictions | Historical benchmarking corpus |
+| **BibleTalk.tv API** | Bible studies, verse data | Free JSON API | Supplementary verse context |
+| **SermonScript.com** | Full sermon transcripts from well-known pastors | Free to read | Comparison corpus for scoring calibration |
+
+---
+
+## Proof of Concept #2: Scripture Cross-Reference Analyzer
+
+### What It Does
+
+Takes a sermon transcript (or the mock one from POC #1) and performs deep scripture analysis using **only free APIs** — no OpenAI key needed:
+
+1. **Detect scripture references** in the transcript text using regex
+2. **Fetch actual verse text** from Bible API (free, no auth)
+3. **Fetch cross-references** from OpenBible.info
+4. **Calculate metrics**: scripture density, cross-reference depth, time-in-word estimate
+5. **Compare against a Spurgeon sermon** from Project Gutenberg as a historical benchmark
+
+### Why This POC
+
+- Proves the scripture detection + verification pipeline works with free tools
+- Zero cost — no API keys needed at all
+- Demonstrates the "historical benchmarking" idea
+- Produces real, interesting data that's demo-worthy
+- Complements POC #1 (which proved AI scoring) with a deterministic analysis layer
+
+### How to Run
+
+```bash
+python3 poc/scripture_analyzer.py              # Analyze mock sermon
+python3 poc/scripture_analyzer.py --compare    # Also compare against Spurgeon
+```
+
+### Output
+
+`poc/scripture_analysis.json` — scripture references found, verse text fetched, cross-references, density metrics, and optional historical comparison.
