@@ -858,3 +858,63 @@ These Python libraries run alongside Azure services to give us metrics that clou
 ### Key Idea
 
 Feed GPT-4 pre-computed metrics (pitch variance, readability grade, filler count, coherence score) instead of asking it to infer everything from raw text. More consistent, reproducible scores — the LLM becomes a *scorer* that weighs measurements, not a *measurer* that guesses.
+
+---
+
+## Proof of Concept #3: Open-Source Audio + Text Analysis (Real Sermon)
+
+### What We Did
+
+Ran John Piper's "The Mighty and Merciful Message of Romans 1-8" (Sept 22, 2002, ~40 min, from desiringgod.org) through four open-source tools — zero API keys, everything local on a laptop CPU.
+
+### How to Run
+
+```bash
+source .venv/bin/activate
+python poc/audio_analysis_poc.py poc/samples/piper_romans_1_8.mp3
+python poc/audio_analysis_poc.py poc/samples/piper_romans_1_8.mp3 --skip-transcribe  # reuse cached transcript
+```
+
+(Audio file not committed — download from desiringgod.org into `poc/samples/`)
+
+### Results: Piper Benchmark
+
+| Metric | Value | What It Means |
+|--------|-------|---------------|
+| Duration | 39.7 min | — |
+| Words | 5,161 | — |
+| WPM | 130 | Deliberate pace (avg conversational = 140-160) |
+| Filler words | 59 (1.5/min) | Very clean. 43 of 59 are "so" (transitional, not hesitation) |
+| Pitch mean | 172.8 Hz | Male vocal range |
+| Pitch std | 61.1 Hz | Very expressive (monotone speaker ≈ 15-20 Hz) |
+| Pitch range | 509.5 Hz | Huge — deep rumble to intense peaks |
+| Volume range | 79.8 dB | Whisper to shout — uses volume as emphasis |
+| Pauses | 805 (20.3/min) | Signature Piper — dramatic silence for emphasis |
+| Flesch Reading Ease | 75.0 | Fairly easy — accessible to general audience |
+| Grade Level | 7.1 | 7th grade. Deep theology in simple language |
+| Scripture refs | 9 (0.23/min) | Overview sermon covering 8 chapters, so breadth over depth |
+| Imperatives | 15 | Solid application — "I want you to..." moments |
+
+### Hypothetical PSR Score: 84/100
+
+| Category (Weight) | Score | Reasoning |
+|--------------------|-------|-----------|
+| Biblical Accuracy (25%) | 88 | 9 refs correctly placed, walking through Romans in order |
+| Time in the Word (20%) | 75 | Covering 8 chapters in 40 min — breadth over depth by design |
+| Passage Focus (10%) | 70 | Survey sermon, not single-passage exposition. Stays in Romans but jumps around |
+| Clarity (10%) | 92 | 7th grade reading level with deep theology. Elite |
+| Engagement (10%) | 95 | 61 Hz pitch variation + 80 dB volume range + 20 pauses/min. Data screams dynamic |
+| Application (10%) | 82 | 15 imperative sentences — calling people to action, not just teaching |
+| Delivery (10%) | 85 | 1.5 fillers/min is clean. 130 WPM is deliberate and controlled |
+| Emotional Range (5%) | 90 | 509 Hz pitch range + volume dynamics = quiet intensity to full passion |
+
+### Lessons Learned
+
+1. **faster-whisper on CPU works** — transcribed 40 min in reasonable time, no GPU needed. Good enough for MVP
+2. **Whisper skips filler words** — "so", "like", "right" are caught by text search, but true disfluencies ("um", "uh") are often omitted. CrisperWhisper would fix this — our filler count of 59 is likely an undercount
+3. **Spoken scripture is hard to detect** — Piper says "chapter 3 verse 21" without repeating "Romans" every time. We had to build a contextual resolver that tracks the last-mentioned book. Edge case: "Revelation" appearing earlier caused one misattribution (tagged "Revelation 3:28" instead of "Romans 3:28"). `pythonbible` library would help here
+4. **Parselmouth is the MVP audio tool** — pitch + intensity in 3 lines of code. Gives us Engagement and Delivery metrics that no text-only analysis can provide
+5. **textstat is trivially easy** — one pip install, one function call, instant readability scores. No reason not to include this in MVP
+6. **Piper makes a great benchmark** — 84 PSR feels right for an overview sermon from an elite preacher. A deep single-passage exposition from him would likely score 88-90. Good calibration target
+7. **"so" as a filler is debatable** — 43 of 59 fillers were "so". It's more of a transition word for Piper. May need to weight true hesitation fillers (um, uh) differently from transitional fillers (so, right, you know)
+8. **Pause detection needs refinement** — 805 pauses at 20/min seems high. The intensity-threshold approach catches both intentional dramatic pauses and natural breathing gaps. Need to distinguish strategic pauses (>1s) from micro-pauses (<0.3s)
