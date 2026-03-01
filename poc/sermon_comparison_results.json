@@ -1,0 +1,159 @@
+[
+  {
+    "id": "romans_1_8",
+    "audio": {
+      "pitch_mean_hz": 172.8,
+      "pitch_std_hz": 61.1,
+      "pitch_range_hz": 509.5,
+      "intensity_mean_db": 58.9,
+      "dynamic_range_db": 79.8,
+      "pauses": 805,
+      "pauses_per_min": 20.3,
+      "duration_seconds": 2381.4
+    },
+    "title": "The Mighty and Merciful Message of Romans 1-8",
+    "type": "Survey",
+    "passage": "Romans 1-8 (overview)",
+    "date": "2002-09-22",
+    "text": {
+      "word_count": 5161,
+      "wpm": 130.0,
+      "flesch_reading_ease": 75.0,
+      "flesch_kincaid_grade": 7.1,
+      "filler_total": 59,
+      "filler_per_min": 1.5,
+      "top_fillers": {
+        "so": 43,
+        "like": 9,
+        "right": 7
+      },
+      "imperative_sentences": 15,
+      "scripture_count": 9,
+      "scripture_per_min": 0.23,
+      "scripture_refs": [
+        "Romans 15:24",
+        "Romans 1:5",
+        "Romans 1:16",
+        "Romans 1:18",
+        "Romans 1:18",
+        "Romans 3:21",
+        "revelation 3:28",
+        "Romans 7:4",
+        "Romans 7:4"
+      ]
+    }
+  },
+  {
+    "id": "called_according",
+    "audio": {
+      "pitch_mean_hz": 195.0,
+      "pitch_std_hz": 74.6,
+      "pitch_range_hz": 524.3,
+      "intensity_mean_db": 55.5,
+      "dynamic_range_db": 119.3,
+      "pauses": 1258,
+      "pauses_per_min": 35.9,
+      "duration_seconds": 2099.7
+    },
+    "title": "Called According to His Purpose",
+    "type": "Expository/Exegetical",
+    "passage": "Romans 8:28-30",
+    "date": "1985-10-13",
+    "text": {
+      "word_count": 3794,
+      "wpm": 108.4,
+      "flesch_reading_ease": 76.7,
+      "flesch_kincaid_grade": 6.7,
+      "filler_total": 36,
+      "filler_per_min": 1.0,
+      "top_fillers": {
+        "so": 23,
+        "like": 7,
+        "right": 3,
+        "you know": 2,
+        "literally": 1
+      },
+      "imperative_sentences": 11,
+      "scripture_count": 2,
+      "scripture_per_min": 0.06,
+      "scripture_refs": [
+        "1 Corinthians 1:23",
+        "Deuteronomy 30:6"
+      ]
+    }
+  },
+  {
+    "id": "dont_waste",
+    "audio": {
+      "pitch_mean_hz": 150.4,
+      "pitch_std_hz": 50.6,
+      "pitch_range_hz": 524.8,
+      "intensity_mean_db": 55.8,
+      "dynamic_range_db": 385.7,
+      "pauses": 1544,
+      "pauses_per_min": 27.4,
+      "duration_seconds": 3386.0
+    },
+    "title": "Don't Waste Your Life",
+    "type": "Topical",
+    "passage": "Various (topic-driven)",
+    "date": "2012-10-17",
+    "text": {
+      "word_count": 7063,
+      "wpm": 125.2,
+      "flesch_reading_ease": -38.0,
+      "flesch_kincaid_grade": 51.0,
+      "filler_total": 121,
+      "filler_per_min": 2.1,
+      "top_fillers": {
+        "so": 89,
+        "like": 15,
+        "you know": 8,
+        "i mean": 5,
+        "right": 4
+      },
+      "imperative_sentences": 2,
+      "scripture_count": 1,
+      "scripture_per_min": 0.02,
+      "scripture_refs": [
+        "Matthew 3:15"
+      ]
+    }
+  },
+  {
+    "id": "joy",
+    "audio": {
+      "pitch_mean_hz": 180.5,
+      "pitch_std_hz": 78.9,
+      "pitch_range_hz": 523.1,
+      "intensity_mean_db": 55.7,
+      "dynamic_range_db": 126.6,
+      "pauses": 1119,
+      "pauses_per_min": 22.5,
+      "duration_seconds": 2987.3
+    },
+    "title": "No One Will Take Your Joy from You",
+    "type": "Topical (pillar)",
+    "passage": "John 16:16-24",
+    "date": "2011-05-07",
+    "text": {
+      "word_count": 6337,
+      "wpm": 127.3,
+      "flesch_reading_ease": 81.1,
+      "flesch_kincaid_grade": 5.0,
+      "filler_total": 79,
+      "filler_per_min": 1.6,
+      "top_fillers": {
+        "so": 55,
+        "right": 12,
+        "like": 8,
+        "you know": 3,
+        "i mean": 1
+      },
+      "imperative_sentences": 25,
+      "scripture_count": 0,
+      "scripture_per_min": 0.0,
+      "scripture_refs": []
+    }
+  }
+]

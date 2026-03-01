@@ -1,0 +1,143 @@
+{
+  "pipeline": "psr-poc5-azure-multimodel",
+  "timestamp": "2026-02-28T13:48:32Z",
+  "source": "poc/samples/piper_called_according_to_his_purpose.mp3",
+  "models_used": {
+    "biblical": "o4-mini",
+    "structure": "gpt-41",
+    "delivery": "gpt-41-mini",
+    "classify": "gpt-41-mini"
+  },
+  "timings_seconds": {
+    "classify": 1.0,
+    "pass3_delivery": 5.1,
+    "pass2_structure": 6.8,
+    "pass1_biblical": 10.1
+  },
+  "transcript_words": 1064,
+  "transcript_duration": 2099.7,
+  "audio_metrics": {
+    "pitch_mean_hz": 195.0,
+    "pitch_std_hz": 74.6,
+    "pitch_range_hz": 524.3,
+    "intensity_mean_db": 55.5,
+    "intensity_range_db": 119.3,
+    "pause_count": 1258,
+    "pauses_per_minute": 35.9,
+    "duration_seconds": 2099.7
+  },
+  "sermon_classification": {
+    "sermon_type": "expository",
+    "confidence": 90,
+    "reasoning": "The sermon focuses deeply on a specific passage, Romans 8:28-30, analyzing verses in detail and explaining their meaning verse-by-verse."
+  },
+  "pass1_biblical": {
+    "biblical_accuracy": {
+      "score": 95,
+      "scripture_refs_found": [
+        "Romans 8:28",
+        "Romans 8:29",
+        "Romans 8:30",
+        "Romans 8:35",
+        "Romans 8:36",
+        "Romans 8:37"
+      ],
+      "refs_used_in_context": 6,
+      "refs_out_of_context": 0,
+      "reasoning": "All quoted passages from Romans 8 are accurately rendered and handled in their proper Pauline context; no misquotes or out\u2010of\u2010context uses detected."
+    },
+    "time_in_the_word": {
+      "score": 70,
+      "scripture_percentage": 25,
+      "anecdote_percentage": 15,
+      "reasoning": "Roughly a quarter of the sermon time is spent reading or directly unpacking Scripture, while a brief personal illustration (construction site anecdote) takes up about 15%, the remainder being expository application."
+    },
+    "passage_focus": {
+      "score": 90,
+      "main_passage": "Romans 8:28",
+      "time_on_main_passage_pct": 80,
+      "tangent_count": 1,
+      "reasoning": "The sermon stays tightly centered on Romans 8:28\u201330 with only one clear illustrative tangent (the construction\u2010site story); overall focus remains on the main text."
+    }
+  },
+  "pass2_structure": {
+    "clarity": {
+      "score": 82,
+      "structure_points": [
+        "Introduction via Romans 8:28-30",
+        "Exploration of context and expansion (verses 35-36)",
+        "Contrast between suffering and hope",
+        "Illustration: the construction site and foundation as metaphor",
+        "Application of living inside Romans 8:28",
+        "Transition to multi-week sermon plan"
+      ],
+      "transition_quality": "moderate",
+      "reasoning": "The sermon has a recognizable structure: introduction of scripture, expansion to broader chapter context, illustration, and closing vision. Main points are reasonably clear, though sometimes development is diffuse and transitions between scriptural exposition and metaphor are not always explicit, which can tax listener orientation. The language is generally accessible, with the exception of occasional complex phrases (e.g., theological language, references to biblical architecture)."
+    },
+    "application": {
+      "score": 68,
+      "actionable_takeaways": [
+        "Find refuge in the promise of Romans 8:28.",
+        "Trust that all life experiences will work for your good.",
+        "Let your faith become strong and unshakeable."
+      ],
+      "application_moments": 3,
+      "reasoning": "The sermon clearly addresses the 'so what?' question, emphasizing living 'inside' the promise and finding hope in hardship. However, the action steps are somewhat abstract: 'let your faith become strong' and 'find refuge' are inspiring but not very concrete. There is little imperative or highly specific actionable language (e.g., nothing like 'this week, meditate on this verse every morning'), and the emphasis is more on perspective shift than on daily behaviors."
+    },
+    "engagement": {
+      "score": 89,
+      "rhetorical_devices": [
+        "questions ('What do you suppose we should learn from this?')",
+        "illustration (construction site foundation)",
+        "repetition ('hope', 'all things', 'foundation')",
+        "direct address ('Isn't that the meaning of your beloved verse?')"
+      ],
+      "audience_connection": "strong",
+      "reasoning": "The preacher uses a vivid, relatable illustration (the construction site), repeated rhetorical questions to draw the audience in, and consistently deploys direct address and inclusive language ('you', 'we'). There is strong connection and pacing variety, with shifts from exposition to illustration to direct application. The callbacks to earlier verses and the promise of a multi-week journey strengthen engagement and anticipation."
+    }
+  },
+  "pass3_delivery": {
+    "delivery": {
+      "score": 75,
+      "filler_words": {},
+      "filler_total": 0,
+      "fillers_per_minute": 0,
+      "wpm": 30.4,
+      "pacing_assessment": "Extremely slow speaking rate compared to typical sermon delivery. The extremely low WPM (30.4) indicates a very deliberate and unhurried pace, which may cause listeners to lose attention if sustained for long periods. However, combined with the very high number of pauses per minute (35.9/min), it suggests a deliberate, contemplative style possibly intended to emphasize every word and allow the congregation time to meditate on each phrase.",
+      "confidence_level": "moderate",
+      "reasoning": "The moderate confidence level is due to the very slow pace that may either be a purposeful rhetorical strategy or unintentionally cause disengagement. The lack of filler words supports a polished delivery without hesitation, but the extreme pause frequency may feel excessive to some listeners."
+    },
+    "emotional_range": {
+      "score": 90,
+      "tone_shifts": 3,
+      "passion_moments": [
+        "Emphatic declaration of HOPE splattered over the 'gory' backdrop of suffering",
+        "Vivid imagery describing construction and foundation as a metaphor for faith",
+        "Rising longing and prayerful plea to make listeners strong and steadfast in faith"
+      ],
+      "sentiment_arc": "Starts with a sober acknowledgment of trials and suffering, then moves into a triumphant and hopeful declaration of victory and divine purpose, culminating in a passionate call for deep spiritual foundation and strength.",
+      "reasoning": "The high pitch standard deviation (74.6 Hz) and exceptionally wide pitch range (524.3 Hz) imply very dynamic and expressive vocal modulation, supporting strong emotional expression. The strong volume variation (intensity range of 119.3 dB) further enhances the passionate delivery. The transcript reflects significant shifts in tone from sober reflection to bold hope and inspiration, matching the measured audio metrics."
+    }
+  },
+  "raw_scores": {
+    "biblical_accuracy": 95,
+    "time_in_the_word": 70,
+    "passage_focus": 90,
+    "clarity": 82,
+    "application": 68,
+    "engagement": 89,
+    "delivery": 75,
+    "emotional_range": 90
+  },
+  "normalized_scores": {
+    "biblical_accuracy": 95,
+    "time_in_the_word": 70,
+    "passage_focus": 90,
+    "clarity": 82,
+    "application": 68,
+    "engagement": 89,
+    "delivery": 75,
+    "emotional_range": 90
+  },
+  "composite_psr": 82.7
+}

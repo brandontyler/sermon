@@ -1,0 +1,176 @@
+{
+  "pipeline": "psr-poc7-validated-multipass",
+  "timestamp": "2026-03-01T10:45:54Z",
+  "source": "poc/samples/piper_called_according_to_his_purpose.mp3",
+  "purpose": "Re-score POC #5 using POC #6's complete transcript (3,762 words vs 1,064)",
+  "models_used": {
+    "biblical": "o4-mini",
+    "structure": "gpt-41",
+    "delivery": "gpt-41-mini",
+    "classify": "gpt-41-mini"
+  },
+  "timings_seconds": {
+    "classify": 1.4,
+    "pass3_delivery": 4.7,
+    "pass2_structure": 7.0,
+    "pass1_biblical": 14.5
+  },
+  "transcript_source": "poc6_fast_transcription",
+  "transcript_words": 3762,
+  "transcript_wpm": 107.5,
+  "audio_metrics": {
+    "pitch_mean_hz": 195.0,
+    "pitch_std_hz": 74.6,
+    "pitch_range_hz": 524.3,
+    "intensity_mean_db": 55.5,
+    "intensity_range_db": 119.3,
+    "pause_count": 1258,
+    "pauses_per_minute": 35.9,
+    "duration_seconds": 2099.7
+  },
+  "sermon_classification": {
+    "sermon_type": "expository",
+    "confidence": 90,
+    "reasoning": "The sermon focuses closely on Romans 8:28-30, analyzing and explaining the passage in detail with verse-by-verse reflection."
+  },
+  "pass1_biblical": {
+    "biblical_accuracy": {
+      "score": 95,
+      "scripture_refs_found": [
+        "Romans 8:28",
+        "Romans 8:29",
+        "Romans 8:30",
+        "Romans 8:35",
+        "Romans 8:36",
+        "Romans 8:37",
+        "Deuteronomy 30:6",
+        "1 Corinthians 1:23",
+        "1 Corinthians 1:24",
+        "Romans 9:10",
+        "Romans 9:11",
+        "Romans 9:12"
+      ],
+      "refs_used_in_context": 12,
+      "refs_out_of_context": 0,
+      "reasoning": "All detected references accurately reflect their biblical context. Romans 8:28\u201330, 35\u201337 are quoted and applied consistently with their original meaning. The use of 1 Corinthians 1:23-24 to distinguish effectual calling, Deuteronomy 30:6 on circumcision of heart, and Romans 9:10-12 on election are textually sound and not strained or misused."
+    },
+    "time_in_the_word": {
+      "score": 80,
+      "scripture_percentage": 15,
+      "anecdote_percentage": 5,
+      "reasoning": "The sermon begins with substantial reading of key passages (Romans 8:28-30, 8:35-37) and repeatedly anchors exposition in Scripture. However, the majority of time is spent in interpretation and illustrative stories (construction scoop, dog anecdote), so direct Scripture quotes occupy roughly 15% and anecdotes about 5% of the text."
+    },
+    "passage_focus": {
+      "score": 85,
+      "main_passage": "Romans 8:28",
+      "time_on_main_passage_pct": 65,
+      "tangent_count": 4,
+      "reasoning": "The central focus is clearly Romans 8:28, with multiple returns to its wording and implications. Approximately 65% of the sermon is devoted to unpacking that verse and related verses. Tangents include the construction scoop illustration, the childhood dog story, the Billy Graham general call mention, and the straw-house/fortifications metaphor."
+    }
+  },
+  "pass2_structure": {
+    "clarity": {
+      "score": 92,
+      "structure_points": [
+        "Introduction and reading of Romans 8:28-30",
+        "Highlighting the hope and assurance found in Romans 8",
+        "Explanation of the magnitude of the promise (illustrated with a foundation/skyscraper analogy)",
+        "Identification of the beneficiaries of the promise (those who love God/called according to His purpose)",
+        "Exegesis of 'called' and 'according to His purpose'",
+        "Supporting texts (1 Corinthians, Deuteronomy, Romans 9)",
+        "Conclusion/applicational summarization",
+        "Prayer"
+      ],
+      "transition_quality": "strong",
+      "reasoning": "The sermon demonstrates a logical and progressive flow, moving from text exposition, theological explanation, supporting illustration, and biblical cross-referencing to practical application and prayer. Clear structural signposting and illustrative language aid accessibility, despite the depth of theology. Occasional rhetorical questions and summary statements reinforce clarity throughout."
+    },
+    "application": {
+      "score": 81,
+      "actionable_takeaways": [
+        "Anchor your self-understanding and hope in God's sovereign working for your good.",
+        "Seek assurance in your response to God's effectual call and love for Him.",
+        "Reject false confidences (wealth, drugs, defense) in favor of divine promise.",
+        "Embrace suffering and difficulty with the conviction of God's purpose.",
+        "Allow the doctrine of effectual calling to produce iron-like faith and assurance.",
+        "Pray for God to work faith and new birth in your heart if you do not experience this assurance."
+      ],
+      "application_moments": 7,
+      "reasoning": "Application is woven throughout, though often more implicit than explicitly imperative. Practical outworkings are strongly emphasized (finding assurance, facing suffering, seeking hope in the doctrine). There is a clear 'so what' for both believers (assurance, stability) and seekers (call to be awakened by God), but imperatives are not always distinctly separated, and some application is more affective/motivational than strictly specific or behavioral."
+    },
+    "engagement": {
+      "score": 95,
+      "rhetorical_devices": [
+        "Metaphor (foundation, skyscraper, banquet, fortress, mailing, limousine escort, rock of Gibraltar)",
+        "Contrast (straw houses vs. solid rock, Blackie the dog vs. Lazarus)",
+        "Repetition (emphasizing 'all things', 'effectual call', etc.)",
+        "Rhetorical questions",
+        "Illustrative storytelling (childhood pet, construction site)",
+        "Direct audience address ('Isn\u2019t that the meaning?', 'Where do you get the assurance...?')"
+      ],
+      "audience_connection": "strong",
+      "reasoning": "The sermon makes extensive and vivid use of illustrations and metaphors (construction site, dog analogy, banquet), employs rhetorical questions to involve the listener, and varies pacing through narration, exegesis, and impassioned address. The preacher connects personal experience, current local references, and theological depth in ways that maintain high engagement. The energy and emotional tone drive attention and absorption, and audience inclusion is explicit."
+    }
+  },
+  "pass3_delivery": {
+    "delivery": {
+      "score": 85,
+      "filler_words": {},
+      "filler_total": 0,
+      "fillers_per_minute": 0,
+      "wpm": 107.5,
+      "pacing_assessment": "The speaker\u2019s rate of 107.5 WPM is slower than the typical deliberate pacing range (120-150 WPM), indicating a measured, thoughtful delivery suited to deep theological exposition. The very high number of pauses (35.9 per minute) suggests a deliberate, reflective style with frequent breaks for emphasis and thought, not rushed. This slower pace combined with abundant pauses supports clarity and comprehension for complex content.",
+      "confidence_level": "high",
+      "reasoning": "The speaker maintains a steady, confident tone with no notable filler words, indicating strong command of the material and purposeful delivery. The frequent pauses and slower pace enhance understanding of theological concepts, showing confidence and control rather than uncertainty or haste."
+    },
+    "emotional_range": {
+      "score": 90,
+      "tone_shifts": 4,
+      "passion_moments": [
+        "Opening with Romans 8:28-30: reverent and weighty tone, establishing the importance of the scripture.",
+        "Description of the foundation and skyscraper metaphor: energetic, vivid imagery illustrating God\u2019s promise and sovereignty.",
+        "Explanation of the divine call vs general call: passionate and clarifying tone emphasizing the power of God's effectual call.",
+        "Closing prayer: heartfelt and earnest, invoking spiritual awakening."
+      ],
+      "sentiment_arc": "The sermon opens with solemn affirmation of scriptural truths, transitions into vivid, hopeful imagery of God\u2019s work in believers\u2019 lives, then deepens into theological explanation with clear distinction between general and effectual calling, and ends in earnest supplication for spiritual awakening.",
+      "reasoning": "The speaker exhibits a rich emotional texture, moving from reverence to hope to doctrinal clarity and finally to heartfelt prayer. The large pitch standard deviation (74.6 Hz) and extremely wide pitch range (524.3 Hz) support evident vocal expressiveness and dynamic tone changes. Volume variation (119.3 dB range) adds dramatic impact. This wide emotional and tonal range aligns well with the sermon\u2019s theological depth and pastoral fervor."
+    }
+  },
+  "raw_scores": {
+    "biblical_accuracy": 95,
+    "time_in_the_word": 80,
+    "passage_focus": 85,
+    "clarity": 92,
+    "application": 81,
+    "engagement": 95,
+    "delivery": 85,
+    "emotional_range": 90
+  },
+  "normalized_scores": {
+    "biblical_accuracy": 95,
+    "time_in_the_word": 80,
+    "passage_focus": 85,
+    "clarity": 92,
+    "application": 81,
+    "engagement": 95,
+    "delivery": 85,
+    "emotional_range": 90
+  },
+  "composite_psr": 88.0,
+  "comparison_vs_poc5": {
+    "poc5_words": 1064,
+    "poc7_words": 3762,
+    "poc5_composite": 82.7,
+    "poc7_composite": 88.0,
+    "delta": 5.3,
+    "category_deltas": {
+      "biblical_accuracy": 0,
+      "time_in_the_word": 10,
+      "passage_focus": -5,
+      "clarity": 10,
+      "application": 13,
+      "engagement": 6,
+      "delivery": 10,
+      "emotional_range": 0
+    }
+  }
+}

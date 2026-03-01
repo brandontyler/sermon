@@ -2,3 +2,5 @@
 poc/samples/
 .venv/
 __pycache__/
+.env
+poc/*_result.json
