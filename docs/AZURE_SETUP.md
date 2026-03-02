@@ -121,7 +121,19 @@ Budget name: `psr-monthly-budget`. Runs March 2026 – March 2027.
 az consumption budget show --budget-name psr-monthly-budget -o table
 ```
 
+## What Was Created Manually (During POCs)
+
+These resources were created via `az` CLI during POC development. The Bicep templates (infra/) recreate all of these from scratch — no manual steps needed for a fresh deployment.
+
+| Resource | Name | Kind | SKU | Notes |
+|----------|------|------|-----|-------|
+| Resource Group | rg-sermon-rating-dev | — | — | eastus2 |
+| AI Speech | psr-speech-dev | SpeechServices | F0 (free) | 5 hrs/mo free transcription |
+| Azure OpenAI | psr-openai-dev | OpenAI | S0 | Regional endpoint (no custom subdomain) |
+| OpenAI Deployment | o4-mini | o4-mini 2025-04-16 | Standard 80K TPM | Pass 1: Biblical Analysis |
+| OpenAI Deployment | gpt-41 | gpt-4.1 2025-04-14 | Standard 50K TPM | Pass 2: Structure & Content |
+| OpenAI Deployment | gpt-41-mini | gpt-4.1-mini 2025-04-14 | Standard 80K TPM | Pass 3: Delivery + Classification |
+
 ## What's Next
 
-- Create resource group for PSR (`rg-sermon-rating-dev`)
-- Deploy infrastructure via Bicep templates
+- Deploy full MVP infrastructure via Bicep templates (`infra/deploy.sh`)
