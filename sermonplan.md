@@ -15,7 +15,7 @@ Built on Azure to showcase its AI, serverless, and data platform capabilities.
 | Category | Weight | What It Measures |
 |----------|--------|-----------------|
 | **Biblical Accuracy** | 25% | Scripture references detected, verified against passage context. Flags controversial interpretations rather than marking wrong. |
-| **Time in the Word** | 20% | Percentage of sermon spent in scripture/biblical content vs anecdotes, illustrations, stories. |
+| **Time in the Word** | 20% | Biblical content density — how much of the sermon is grounded in biblical truth (quoted, taught, applied, or exposited) vs secular content. Not just direct quotation %. (Redefined in POC #10 — see research.md) |
 | **Passage Focus** | 10% | Time spent on the main/announced passage vs tangents. |
 | **Clarity** | 10% | Logical structure, flow between points, clear transitions. |
 | **Engagement** | 10% | Energy level, pacing variation, audience connection cues. |
@@ -57,14 +57,23 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 - English only, max 1 hour
 
 ### Open Decisions
-- [ ] Scoring calibration strategy — normalization curves are hardcoded estimates (topical +5/+8/+10 for biblical categories). After 20-30 scored sermons across types, revisit with real data. POC #7 baseline: Piper expository = 88.0 composite.
+- [ ] Scoring calibration strategy — normalization curves are hardcoded estimates (topical +5/+8/+10 for biblical categories). After 20-30 scored sermons across types, revisit with real data. Current baselines after POC #10 calibration: Spurgeon "Compel Them" = 92.7 (text-only, topical — highest), Piper = 87.7 (expository), Spurgeon "Immutability" = 87.5 (expository), Spurgeon "Power of HS" = 81.6 (topical), Scheer = 78.7 (topical/misclassified).
 - [ ] Cost monitoring / budget alerts on Azure before deploying — $100/mo budget set (see AZURE_SETUP.md), need to verify alerts fire
 - [ ] Cosmos DB serverless vs simpler alternatives (friend to confirm)
+- [ ] Cosmos DB partition key — using `/id` for MVP (simplest). Every feed query (`GET /api/sermons`) is a cross-partition query, which is Cosmos DB's most expensive operation. Fine at MVP volume. Revisit if feed query latency or RU cost becomes noticeable. Options: `/status` (hot/cold partition), composite key, or change feed pattern.
 
 ### ⚠️ Known Issues (from POC #5)
 - **Transcription word loss:** Azure AI Speech real-time chunking (5-min ffmpeg splits) dropped ~72% of words on a 35-min sermon (1,064 vs 3,794 expected). **Fixed in POC #6:** Fast transcription API recovered 99.2% of words (3,762 vs 3,794). Synchronous, no blob storage needed, 47x faster than real-time. Add WPM sanity check (flag if < 80 or > 200).
 - **Scoring on partial transcript:** POC #5 scored on the 1,064-word partial transcript. **POC #7 re-scored on the full 3,762-word transcript:** composite jumped 82.7 → 88.0 (+5.3). Application +13, Clarity +10, Delivery +10. Scripture refs: 12 vs 6. **Lesson: always score on complete transcripts.** Pipeline architecture already enforces this (transcribe → score).
 - **Filler word blindness:** Both Whisper and Azure Speech skip disfluencies (um, uh). POC #5 reported 0 fillers. CrisperWhisper remains the only known solution but adds complexity. **Decision for MVP:** Accept filler undercounting — delivery score relies more on Parselmouth audio metrics (pauses, pitch) than filler counts. Revisit in Phase 1.
+- **Sermon type misclassification (POC #8):** Scheer's verse-by-verse 1 Peter 1:1-2 sermon was classified as "topical" (85%) because the classifier only sees the first 2000-3000 chars of transcript — which was all intro anecdote and general epistles survey. This inflated the composite by ~3 points via normalization bumps. **Fixed:** classifier now samples beginning + middle + end of transcript (not just first N chars), and prompt explicitly warns against judging by intro alone.
+- **Parselmouth intensity artifact (POC #8):** Reported 384 dB intensity range on Scheer sermon — physically impossible (real range is 30-80 dB). Caused by near-silence frames in the MP3. **Fixed:** intensity frames below 5th percentile noise floor are filtered before computing range. Same approach as pitch (which already filters unvoiced frames).
+- **S0 rate limits on longer sermons (POC #8):** The 8,192-word Scheer transcript (48 min, 168 WPM) caused repeated 429 errors with 60-180s waits. Normal sermon length — not an edge case. The 50-80K TPM ceiling is easily hit when 3-4 parallel passes each send ~12K tokens. **Fixed:** Throttle-aware scheduler estimates tokens per pass before making any API calls, groups passes by deployment, and only runs in parallel when combined tokens fit within 80% of TPM limit. Falls back to sequential batches with 60s gaps when needed. Exponential backoff (60s base, max 3 retries) remains as safety net.
+
+### ⚠️ Known Issues (from POC #9-#10)
+- **Text-only scoring underestimates Delivery (POC #9):** Spurgeon's Delivery scored 75-85 on text alone — he was historically one of the most dynamic speakers ever. Without Parselmouth audio data, Delivery and Emotional Range are conservative estimates. **Decision:** Display a "text-only" badge on historical/text sermons and note that Delivery/Emotional Range are estimates without audio.
+- **"Time in the Word" was measuring the wrong thing (POC #10):** Old metric measured direct scripture quotation %. Spurgeon's "Immutability of God" scored 30/100 despite being 90% biblical theology. **Fixed:** Redefined to measure biblical content density (quoted + taught + applied + exposited). Spurgeon's score jumped 30 → 95. Biggest single improvement to scoring accuracy. All prompts updated.
+- **Sermon type misclassification still affects normalization (POC #10):** Scheer's expository sermon on 1 Peter 1:1-2 is still classified as topical (85%), inflating biblical scores by ~3 points via normalization bumps. The classifier fix from POC #8 (sample beginning + middle + end) improved but didn't fully solve this. **Open:** May need a confidence threshold — if classification confidence < 90%, skip normalization or use reduced adjustments.
 
 ### NOT in MVP
 - Video upload / transcoding
@@ -84,12 +93,12 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 | **Durable Functions** | Pipeline orchestration |
 | **Blob Storage** | Store uploaded audio files |
 | **AI Speech Service** | Transcription with timestamps |
-| **Azure OpenAI** | Multi-model: o4-mini (biblical reasoning), GPT-4.1 (structure eval), GPT-4.1-mini (delivery eval), GPT-4.1-nano (classification). See [research](docs/research.md#azure-openai-model-selection-research-july-2025) |
+| **Azure OpenAI** | Multi-model: o4-mini (biblical reasoning), GPT-4.1 (structure eval), GPT-4.1-mini (delivery eval + classification). GPT-4.1-nano not yet deployable — using mini. See [research](docs/research.md#azure-openai-model-selection-research-july-2025) and [deployment reference](docs/research.md#azure-openai-deployment-reference) |
 | **Cosmos DB** | Sermon metadata + results (serverless tier) |
 | **Key Vault** | Secrets |
 
 ### MVP Estimated Cost
-~$20-50/mo during development (5 free Speech hours/mo covers ~7 sermons). **~$0.75 per sermon** with fast transcription + multi-model strategy: $0.67 speech + $0.09 OpenAI (3 parallel passes on ~5K-7K word transcripts). Batch API alternative: ~$0.33/sermon if latency isn't critical. See [cost analysis](docs/research.md#cost-analysis-all-poc-runs).
+~$20-50/mo during development (5 free Speech hours/mo covers ~7 sermons). **~$0.75 per sermon** with fast transcription + multi-model strategy: $0.67 speech + $0.09 OpenAI (3 parallel passes on ~5K-7K word transcripts). Confirmed across 5 sermons (POC #8-#10): Scheer = $0.76, Piper = $0.75, Spurgeon text-only = $0.09 each. Batch API alternative: ~$0.33/sermon if latency isn't critical. See [cost analysis](docs/research.md#cost-analysis-all-poc-runs).
 
 ---
 
@@ -111,8 +120,12 @@ Upload audio file
     │     Synchronous, handles up to 2hr/300MB natively. No blob storage needed.
     │     POC #6: 3,762 words in 44s for 35-min sermon. $1.00/hr.
     ├─► Audio analysis (Parselmouth — pitch, volume, pauses)
+    │     (runs in parallel with transcription)
     │
-    │   ── 3 parallel scoring passes (fan-out) ──
+    │   ── throttle-aware parallel passes (fan-out) ──
+    │   Scheduler estimates tokens per pass, groups by deployment,
+    │   runs in parallel only when combined tokens fit within 80% of TPM limit.
+    │   Falls back to sequential batches with 60s gaps when needed.
     │
     ├─► Pass 1: Biblical Analysis — o4-mini ($1.10/$4.40 per 1M tokens)
     │     Categories: Biblical Accuracy, Time in the Word, Passage Focus
@@ -130,8 +143,6 @@ Upload audio file
     │     (pitch, pauses, volume) — heavy lifting already done, cheapest
     │     model with reliable structured output
     │
-    │   ── fan-in ──
-    │
     ├─► Sermon type classification + metadata extraction — GPT-4.1-mini
     │     Classification: expository / topical / survey
     │     Metadata: sermon title, pastor name, main passage (if not provided by uploader)
@@ -141,8 +152,12 @@ Upload audio file
     │     anecdote / illustration / prayer / transition
     │     Required for frontend transcript viewer color-coding
     │
+    │   ── fan-in ──
+    │
     ├─► Score normalization — pure code (no LLM)
     │     Adjust raw scores by sermon type using normalization curves
+    │     If classification confidence < 90%, use reduced adjustments (POC #10)
+    │     Parselmouth: filter intensity below 5th percentile noise floor (POC #8)
     │
     └─► Store results in Cosmos DB, update status to complete
 ```
