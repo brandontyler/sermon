@@ -270,14 +270,14 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "wpmFlag": wpm_flag,
         }
 
-        yield context.call_activity("activity_update_sermon", {
+        yield context.call_activity("activity_update_sermon", RETRY_LIGHT, {
             "sermonId": sermon_id,
             "updates": updates,
         })
 
     except Exception as e:
         log.error(f"Pipeline failed for {sermon_id}: {e}")
-        yield context.call_activity("activity_update_sermon", {
+        yield context.call_activity("activity_update_sermon", RETRY_LIGHT, {
             "sermonId": sermon_id,
             "updates": fail_sermon_doc(str(e)),
         })

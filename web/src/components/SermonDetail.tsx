@@ -19,27 +19,49 @@ export default function SermonDetailClient() {
   const { id } = useParams<{ id: string }>();
   const [sermon, setSermon] = useState<SermonDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 120; // 120 × 5s = 10 min
 
     async function poll() {
-      const res = await fetch(apiUrl(`/api/sermons/${id}`));
-      if (!res.ok) { setLoading(false); return; }
-      const data: SermonDetail = await res.json();
-      if (active) setSermon(data);
-      setLoading(false);
-      if (data.status === "processing" && active) {
-        setTimeout(poll, 5000);
+      try {
+        const res = await fetch(apiUrl(`/api/sermons/${id}`));
+        if (!active) return;
+        if (!res.ok) {
+          setError(res.status === 404 ? "Sermon not found." : `Server error (${res.status}). Try refreshing.`);
+          setLoading(false);
+          return;
+        }
+        const data: SermonDetail = await res.json();
+        if (!active) return;
+        setSermon(data);
+        setLoading(false);
+        if (data.status === "processing") {
+          attempts++;
+          if (attempts >= MAX_ATTEMPTS) {
+            setError("Analysis is taking longer than expected. Try refreshing in a few minutes.");
+            return;
+          }
+          timeoutId = setTimeout(poll, 5000);
+        }
+      } catch {
+        if (!active) return;
+        setError("Network error. Check your connection and try refreshing.");
+        setLoading(false);
       }
     }
 
     poll();
-    return () => { active = false; };
+    return () => { active = false; clearTimeout(timeoutId); };
   }, [id]);
 
   if (loading) return <Shell>Loading...</Shell>;
+  if (error) return <Shell>{error}</Shell>;
   if (!sermon) return <Shell>Sermon not found.</Shell>;
 
   return (

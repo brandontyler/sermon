@@ -233,6 +233,13 @@ deploy_frontend() {
     npm install -g @azure/static-web-apps-cli 2>/dev/null
   fi
 
+  # Set API URL so the frontend knows where to send requests
+  # SWA Free tier doesn't support linked backends — frontend calls Function App directly
+  echo "[·] Resolving Function App URL..."
+  FUNC_URL="https://$(az functionapp show -n "$FUNC_NAME" -g "$RG" --query defaultHostName -o tsv)"
+  echo "    ✓ ${FUNC_URL}"
+  export NEXT_PUBLIC_API_URL="$FUNC_URL"
+
   echo "[·] Building frontend..."
   (cd "${PROJECT_DIR}/web" && npm install --silent && npm run build 2>&1 | tail -3)
 

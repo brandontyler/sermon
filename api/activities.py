@@ -4,7 +4,6 @@ Each function is a Durable Functions activity that does one thing.
 The orchestrator (function_app.py) coordinates them.
 """
 
-import json
 import logging
 import os
 import tempfile
@@ -66,7 +65,8 @@ def transcribe(input_data):
         credential=AzureKeyCredential(os.environ["SPEECH_KEY"]),
     )
 
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+    ext = os.path.splitext(input_data["blobUrl"])[1] or ".mp3"
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
         f.write(audio_bytes)
         tmp_path = f.name
 
@@ -120,7 +120,8 @@ def analyze_audio(input_data):
     blob = _blob_client(input_data["blobUrl"])
     audio_bytes = blob.download_blob().readall()
 
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+    ext = os.path.splitext(input_data["blobUrl"])[1] or ".mp3"
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
         f.write(audio_bytes)
         tmp_path = f.name
 
@@ -186,10 +187,13 @@ Be rigorous. Check whether each scripture reference is used in its proper contex
 SERMON TRANSCRIPT:
 {transcript}"""}],
     )
-    raw = json.loads(resp.choices[0].message.content)
+    from schema import CATEGORY_KEY_MAP, validate_llm_response
+    raw = validate_llm_response(resp.choices[0].message.content, {
+        "biblical_accuracy": ["score", "reasoning"],
+        "time_in_the_word": ["score", "reasoning"],
+        "passage_focus": ["score", "reasoning"],
+    })
 
-    # Map to camelCase with reasoning
-    from schema import CATEGORY_KEY_MAP
     result = {}
     for snake_key in ["biblical_accuracy", "time_in_the_word", "passage_focus"]:
         camel_key = CATEGORY_KEY_MAP[snake_key]
@@ -228,9 +232,13 @@ Return JSON:
 - "engagement": {{"score": 0-100, "rhetorical_devices": [list], "audience_connection": "strong/moderate/weak", "reasoning": "..."}}"""},
         ],
     )
-    raw = json.loads(resp.choices[0].message.content)
+    from schema import CATEGORY_KEY_MAP, validate_llm_response
+    raw = validate_llm_response(resp.choices[0].message.content, {
+        "clarity": ["score", "reasoning"],
+        "application": ["score", "reasoning"],
+        "engagement": ["score", "reasoning"],
+    })
 
-    from schema import CATEGORY_KEY_MAP
     result = {}
     for snake_key in ["clarity", "application", "engagement"]:
         camel_key = CATEGORY_KEY_MAP[snake_key]
@@ -274,9 +282,12 @@ Return JSON:
 - "emotional_range": {{"score": 0-100, "tone_shifts": int, "passion_moments": [descriptions], "sentiment_arc": "...", "reasoning": "..."}}"""},
         ],
     )
-    raw = json.loads(resp.choices[0].message.content)
+    from schema import CATEGORY_KEY_MAP, validate_llm_response
+    raw = validate_llm_response(resp.choices[0].message.content, {
+        "delivery": ["score", "reasoning"],
+        "emotional_range": ["score", "reasoning"],
+    })
 
-    from schema import CATEGORY_KEY_MAP
     result = {}
     for snake_key in ["delivery", "emotional_range"]:
         camel_key = CATEGORY_KEY_MAP[snake_key]
@@ -337,7 +348,14 @@ TRANSCRIPT — END:
 {last}"""},
         ],
     )
-    raw = json.loads(resp.choices[0].message.content)
+    from schema import validate_flat_response
+    raw = validate_flat_response(resp.choices[0].message.content, {
+        "sermon_type": "topical",
+        "confidence": 50,
+        "title": "Untitled",
+        "pastor": None,
+        "main_passage": None,
+    })
 
     # User-provided values take priority
     return {
@@ -388,7 +406,8 @@ Return JSON: {"types": [type_string_for_each_segment_in_order]}"""},
                 {"role": "user", "content": "\n".join(seg_lines)},
             ],
         )
-        raw = json.loads(resp.choices[0].message.content)
+        from schema import validate_flat_response
+        raw = validate_flat_response(resp.choices[0].message.content, {"types": []})
         batch_types = raw.get("types", [])
         # Pad if model returned fewer than expected
         while len(batch_types) < len(batch):
@@ -429,7 +448,12 @@ def generate_summary(input_data):
             {"role": "user", "content": prompt},
         ],
     )
-    return json.loads(resp.choices[0].message.content)
+    from schema import validate_flat_response
+    return validate_flat_response(resp.choices[0].message.content, {
+        "summary": "",
+        "strengths": [],
+        "improvements": [],
+    })
 
 
 # ─────────────────────────────────────────────
@@ -441,11 +465,18 @@ def update_sermon(input_data):
 
     Input: {"sermonId": str, "updates": dict}
     """
+    from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
     container = _cosmos_client()
     sermon_id = input_data["sermonId"]
     updates = input_data["updates"]
 
-    doc = container.read_item(sermon_id, partition_key=sermon_id)
+    try:
+        doc = container.read_item(sermon_id, partition_key=sermon_id)
+    except CosmosResourceNotFoundError:
+        log.error(f"Sermon {sermon_id} not found in Cosmos — cannot update")
+        return {"ok": False, "error": "not_found"}
+
     doc.update(updates)
     container.upsert_item(doc)
     return {"ok": True}

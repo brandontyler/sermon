@@ -12,14 +12,19 @@ export default function SermonsPage() {
   const router = useRouter();
   const [sermons, setSermons] = useState<SermonSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [sortAsc, setSortAsc] = useState(false);
   const [typeFilter, setTypeFilter] = useState("all");
 
   useEffect(() => {
     fetch(apiUrl("/api/sermons"))
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server error (${r.status})`);
+        return r.json();
+      })
       .then(setSermons)
+      .catch(() => setError("Failed to load sermons. Try refreshing."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -77,6 +82,8 @@ export default function SermonsPage() {
 
       {loading ? (
         <p className="text-gray-400 text-sm">Loading...</p>
+      ) : error ? (
+        <p className="text-red-500 text-sm">{error}</p>
       ) : sorted.length === 0 ? (
         <p className="text-gray-400 text-sm">No sermons yet. <Link href="/" className="text-blue-600 hover:underline">Upload one.</Link></p>
       ) : (

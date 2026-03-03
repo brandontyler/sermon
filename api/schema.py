@@ -127,3 +127,106 @@ def fail_sermon_doc(error_message):
         "error": error_message,
         "failedAt": datetime.datetime.utcnow().isoformat() + "Z",
     }
+
+
+# ─────────────────────────────────────────────
+#  LLM Response Validation (sermon-4e5)
+# ─────────────────────────────────────────────
+
+import json as _json
+import re as _re
+
+
+class LLMValidationError(Exception):
+    """Raised when LLM response fails schema validation."""
+    def __init__(self, message, raw_response=None):
+        super().__init__(message)
+        self.raw_response = raw_response
+
+
+def _strip_markdown_fences(text):
+    """Remove ```json ... ``` wrapping if present."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = _re.sub(r"^```(?:json)?\s*\n?", "", stripped)
+        stripped = _re.sub(r"\n?```\s*$", "", stripped)
+    return stripped
+
+
+def _clamp_score(value):
+    """Coerce to int and clamp 0-100. Raises LLMValidationError if not numeric."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        raise LLMValidationError(f"Score is not numeric: {value!r}")
+    return min(100, max(0, n))
+
+
+def validate_llm_response(raw_text, required_sections):
+    """Parse and validate an LLM JSON response.
+
+    Args:
+        raw_text: raw string from LLM (may have markdown fences)
+        required_sections: dict mapping snake_case section name to list of required keys.
+            Keys named "score" are clamped to 0-100.
+            Keys named "reasoning" default to "" if missing.
+            Example: {"biblical_accuracy": ["score", "reasoning"], "time_in_the_word": ["score", "reasoning"]}
+
+    Returns:
+        Parsed dict with scores clamped and reasoning defaulted.
+
+    Raises:
+        LLMValidationError on parse failure or missing required sections.
+    """
+    cleaned = _strip_markdown_fences(raw_text)
+    try:
+        data = _json.loads(cleaned)
+    except _json.JSONDecodeError as e:
+        raise LLMValidationError(f"Invalid JSON from LLM: {e}", raw_response=raw_text)
+
+    if not isinstance(data, dict):
+        raise LLMValidationError(f"Expected JSON object, got {type(data).__name__}", raw_response=raw_text)
+
+    for section, keys in required_sections.items():
+        if section not in data:
+            raise LLMValidationError(f"Missing required section: '{section}'", raw_response=raw_text)
+        if not isinstance(data[section], dict):
+            raise LLMValidationError(f"Section '{section}' is not an object", raw_response=raw_text)
+        for key in keys:
+            if key == "score":
+                data[section]["score"] = _clamp_score(data[section].get("score"))
+            elif key == "reasoning":
+                data[section].setdefault("reasoning", "")
+            elif key not in data[section]:
+                raise LLMValidationError(f"Missing key '{key}' in section '{section}'", raw_response=raw_text)
+
+    return data
+
+
+def validate_flat_response(raw_text, defaults):
+    """Parse and validate a flat (non-nested) LLM JSON response.
+
+    Args:
+        raw_text: raw string from LLM
+        defaults: dict of key -> default value. Keys present in defaults are
+            filled in if missing. Keys NOT in defaults are left as-is.
+
+    Returns:
+        Parsed dict with defaults applied.
+
+    Raises:
+        LLMValidationError on parse failure.
+    """
+    cleaned = _strip_markdown_fences(raw_text)
+    try:
+        data = _json.loads(cleaned)
+    except _json.JSONDecodeError as e:
+        raise LLMValidationError(f"Invalid JSON from LLM: {e}", raw_response=raw_text)
+
+    if not isinstance(data, dict):
+        raise LLMValidationError(f"Expected JSON object, got {type(data).__name__}", raw_response=raw_text)
+
+    for key, default in defaults.items():
+        data.setdefault(key, default)
+
+    return data

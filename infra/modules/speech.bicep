@@ -1,4 +1,4 @@
-// AI Speech Service — F0 free tier (5 hrs/mo transcription)
+// AI Speech Service — S0 pay-as-you-go ($1/audio hour, $0 at idle)
 param location string
 param environment string
 
@@ -6,7 +6,7 @@ resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   name: 'psr-speech-${environment}'
   location: location
   kind: 'SpeechServices'
-  sku: { name: 'F0' }
+  sku: { name: 'S0' }
   properties: {
     publicNetworkAccess: 'Enabled'
   }

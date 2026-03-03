@@ -24,6 +24,17 @@ export interface TranscriptSegment {
   type: "scripture" | "teaching" | "application" | "anecdote" | "illustration" | "prayer" | "transition";
 }
 
+export interface AudioMetrics {
+  pitchMeanHz: number;
+  pitchStdHz: number;
+  pitchRangeHz: number;
+  intensityMeanDb: number;
+  intensityRangeDb: number;
+  noiseFloorDb: number;
+  pauseCount: number;
+  meanPauseDuration: number;
+}
+
 export interface SermonDetail extends SermonSummary {
   summary: string | null;
   categories: Record<string, CategoryScore> | null;
@@ -34,7 +45,25 @@ export interface SermonDetail extends SermonSummary {
     segments: TranscriptSegment[];
   } | null;
   error: string | null;
+  failedAt: string | null;
+  blobUrl: string | null;
+  filename: string | null;
+  wpmFlag: boolean;
+  audioMetrics: AudioMetrics | null;
+  classificationConfidence: number | null;
+  normalizationApplied: "full" | "half" | "none" | null;
 }
+
+export const CATEGORY_WEIGHTS: Record<string, number> = {
+  biblicalAccuracy: 25,
+  timeInTheWord: 20,
+  passageFocus: 10,
+  clarity: 10,
+  engagement: 10,
+  application: 10,
+  delivery: 10,
+  emotionalRange: 5,
+};
 
 export const CATEGORY_LABELS: Record<string, string> = {
   biblicalAccuracy: "Biblical Accuracy",
