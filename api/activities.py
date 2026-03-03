@@ -465,17 +465,17 @@ def update_sermon(input_data):
 
     Input: {"sermonId": str, "updates": dict}
     """
-    from azure.cosmos.exceptions import CosmosResourceNotFoundError
-
     container = _cosmos_client()
     sermon_id = input_data["sermonId"]
     updates = input_data["updates"]
 
     try:
         doc = container.read_item(sermon_id, partition_key=sermon_id)
-    except CosmosResourceNotFoundError:
-        log.error(f"Sermon {sermon_id} not found in Cosmos — cannot update")
-        return {"ok": False, "error": "not_found"}
+    except Exception as e:
+        if "NotFound" in type(e).__name__ or "CosmosResourceNotFoundError" in type(e).__name__:
+            log.error(f"Sermon {sermon_id} not found in Cosmos — cannot update")
+            return {"ok": False, "error": "not_found"}
+        raise
 
     doc.update(updates)
     container.upsert_item(doc)
