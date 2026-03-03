@@ -11,9 +11,10 @@ Last verified: 2026-03-01 (via `az cognitiveservices account deployment list`)
 | `o4-mini` | o4-mini | 2025-04-16 | Pass 1: Biblical Analysis (reasoning) |
 | `gpt-41` | gpt-4.1 | 2025-04-14 | Pass 2: Structure & Content |
 | `gpt-41-mini` | gpt-4.1-mini | 2025-04-14 | Pass 3: Delivery + Classification |
-| `gpt-4o` | gpt-4o | 2024-11-20 | Legacy (used in early POCs, no longer needed) |
 
 All models confirmed working in POC #5 and POC #7. No changes needed for MVP.
+
+> **Cleanup:** The `gpt-4o` deployment (used in early POCs) has been removed. Delete command: `az cognitiveservices account deployment delete --name psr-openai-dev --resource-group rg-sermon-rating-dev --deployment-name gpt-4o`
 
 ## Branding: "Azure OpenAI" → "Microsoft Foundry"
 

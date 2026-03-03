@@ -1,0 +1,161 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { apiUrl } from "@/lib/api";
+import {
+  SermonDetail,
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  scoreColor,
+  scoreBgColor,
+} from "@/lib/types";
+import ScoreGauge from "@/components/ScoreGauge";
+import RadarView from "@/components/RadarView";
+import TranscriptViewer from "@/components/TranscriptViewer";
+
+export default function SermonDetailClient() {
+  const { id } = useParams<{ id: string }>();
+  const [sermon, setSermon] = useState<SermonDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+
+    async function poll() {
+      const res = await fetch(apiUrl(`/api/sermons/${id}`));
+      if (!res.ok) { setLoading(false); return; }
+      const data: SermonDetail = await res.json();
+      if (active) setSermon(data);
+      setLoading(false);
+      if (data.status === "processing" && active) {
+        setTimeout(poll, 5000);
+      }
+    }
+
+    poll();
+    return () => { active = false; };
+  }, [id]);
+
+  if (loading) return <Shell>Loading...</Shell>;
+  if (!sermon) return <Shell>Sermon not found.</Shell>;
+
+  return (
+    <div className="max-w-[720px] mx-auto p-4 py-8">
+      <Link href="/sermons" className="text-sm text-blue-600 hover:underline">← Back to sermons</Link>
+
+      <h1 className="text-2xl font-bold text-gray-900 mt-4">{sermon.title}</h1>
+      <p className="text-sm text-gray-500 mt-1">
+        {[
+          sermon.pastor,
+          sermon.date && new Date(sermon.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          sermon.duration && `${Math.round(sermon.duration / 60)} min`,
+        ].filter(Boolean).join(" · ")}
+        {sermon.sermonType && (
+          <> · <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{sermon.sermonType}</span></>
+        )}
+      </p>
+
+      {sermon.status === "processing" && (
+        <div aria-live="polite" className="mt-12 text-center text-gray-500">
+          <p className="text-lg font-medium text-gray-900 mb-4">Analyzing sermon...</p>
+          <div className="space-y-2 text-sm">
+            <p>◻ Transcribing audio</p>
+            <p>◻ Analyzing biblical content</p>
+            <p>◻ Evaluating structure</p>
+            <p>◻ Scoring delivery</p>
+          </div>
+          <p className="text-xs text-gray-400 mt-6">This usually takes 1-2 minutes.</p>
+        </div>
+      )}
+
+      {sermon.status === "failed" && (
+        <div role="alert" className="mt-12 text-center">
+          <p className="text-lg font-medium text-gray-900 mb-2">Something went wrong analyzing this sermon.</p>
+          {sermon.error && <p className="text-sm text-gray-500 mb-6">Error: {sermon.error}</p>}
+          <div className="flex gap-4 justify-center">
+            <Link href="/" className="text-sm text-blue-600 hover:underline">Try Again</Link>
+            <Link href="/sermons" className="text-sm text-gray-500 hover:underline">Back to sermons</Link>
+          </div>
+        </div>
+      )}
+
+      {sermon.status === "complete" && sermon.categories && (
+        <>
+          <div className="mt-8 flex flex-col items-center">
+            <ScoreGauge score={sermon.compositePsr ?? 0} />
+            {sermon.summary && <p className="text-sm text-gray-500 italic mt-4 text-center max-w-md">{sermon.summary}</p>}
+          </div>
+
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {CATEGORY_ORDER.map((key) => {
+              const cat = sermon.categories![key];
+              if (!cat) return null;
+              return <CategoryCard key={key} name={CATEGORY_LABELS[key]} weight={cat.weight} score={cat.score} reasoning={cat.reasoning} />;
+            })}
+          </div>
+
+          <div className="mt-10 flex justify-center">
+            <RadarView categories={sermon.categories} />
+          </div>
+
+          {(sermon.strengths || sermon.improvements) && (
+            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {sermon.strengths && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 mb-2">✓ Strengths</h3>
+                  <ul className="space-y-1">
+                    {sermon.strengths.map((s, i) => <li key={i} className="text-sm text-gray-600">• {s}</li>)}
+                  </ul>
+                </div>
+              )}
+              {sermon.improvements && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 mb-2">△ Areas to Improve</h3>
+                  <ul className="space-y-1">
+                    {sermon.improvements.map((s, i) => <li key={i} className="text-sm text-gray-600">• {s}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {sermon.transcript && sermon.transcript.segments.length > 0 && (
+            <div className="mt-10">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Transcript</h3>
+              <TranscriptViewer segments={sermon.transcript.segments} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return <div className="max-w-[720px] mx-auto p-4 py-8 text-gray-400 text-sm">{children}</div>;
+}
+
+function CategoryCard({ name, weight, score, reasoning }: { name: string; weight: number; score: number; reasoning: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4">
+      <div className="flex justify-between text-sm mb-2">
+        <span className="font-medium text-gray-900">{name}</span>
+        <span className="text-gray-400">{weight}%</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 bg-gray-100 rounded-full h-2">
+          <div className={`h-2 rounded-full ${scoreBgColor(score)}`} style={{ width: `${score}%` }} />
+        </div>
+        <span className={`text-sm font-bold ${scoreColor(score)}`}>{score}</span>
+      </div>
+      <button aria-expanded={open} onClick={() => setOpen(!open)} className="text-xs text-gray-400 hover:text-gray-600 mt-2">
+        {open ? "▾ Hide reasoning" : "▸ View reasoning"}
+      </button>
+      {open && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{reasoning}</p>}
+    </div>
+  );
+}

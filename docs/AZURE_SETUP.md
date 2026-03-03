@@ -134,6 +134,28 @@ These resources were created via `az` CLI during POC development. The Bicep temp
 | OpenAI Deployment | gpt-41 | gpt-4.1 2025-04-14 | Standard 50K TPM | Pass 2: Structure & Content |
 | OpenAI Deployment | gpt-41-mini | gpt-4.1-mini 2025-04-14 | Standard 80K TPM | Pass 3: Delivery + Classification |
 
+## Domain
+
+| Field | Value |
+|-------|-------|
+| **Domain** | howwas.church |
+| **Registrar** | Porkbun |
+| **Purchased** | 2026-03-02 |
+| **First Year** | $6.69 |
+| **Renewal** | TBD (check Porkbun for .church renewal rate) |
+| **Purpose** | Primary domain for PSR web app |
+
+### DNS Setup (TODO)
+
+Once the Azure Static Web App is deployed, configure DNS:
+
+1. In Porkbun DNS settings, add a CNAME record pointing to the Static Web App's default hostname
+2. In Azure Portal, add `howwas.church` as a custom domain on the Static Web App (auto-provisions SSL)
+3. Optionally add `www.howwas.church` as a redirect
+
+See [Azure docs: custom domain on Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain).
+
 ## What's Next
 
 - Deploy full MVP infrastructure via Bicep templates (`infra/deploy.sh`)
+- Configure DNS for howwas.church → Azure Static Web App

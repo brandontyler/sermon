@@ -63,7 +63,87 @@ def make_client(key):
     from openai import AzureOpenAI
     return AzureOpenAI(
         api_key=key, api_version="2025-01-01-preview",
-        azure_endpoint=f"https://{REGION}.api.cognitive.microsoft.com/")
+        azure_endpoint=f"https://{REGION}.api.cognitive.microsoft.com/",
+        max_retries=3, timeout=300)
+
+
+def call_with_backoff(fn, *args, initial_wait=60, max_retries=3):
+    """Wrap an LLM call with exponential backoff for 429 rate limits."""
+    for attempt in range(max_retries + 1):
+        try:
+            return fn(*args)
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries:
+                wait = initial_wait * (2 ** attempt)
+                print(f"    ⚠ Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                raise
+
+
+# --- Throttle-Aware Scheduler (shared with azure_multipass_poc.py) ---
+
+DEPLOYMENT_LIMITS = {
+    "o4-mini":     {"tpm": 80_000, "rpm": 80},
+    "gpt-41":      {"tpm": 50_000, "rpm": 50},
+    "gpt-41-mini": {"tpm": 80_000, "rpm": 80},
+}
+TOKEN_RATIO = 1.3
+EST_OUTPUT_TOKENS = {"biblical": 800, "structure": 800, "delivery": 800, "classify": 200}
+O4_MINI_REASONING_MULTIPLIER = 5
+
+
+def estimate_tokens(pass_name, transcript_word_count):
+    input_tokens = int(transcript_word_count * TOKEN_RATIO) + 500
+    output_tokens = EST_OUTPUT_TOKENS.get(pass_name, 800)
+    total = input_tokens + output_tokens
+    if MODELS.get(pass_name) == "o4-mini":
+        total += output_tokens * O4_MINI_REASONING_MULTIPLIER
+    return total
+
+
+def schedule_passes(transcript_word_count):
+    passes = ["pass1_biblical", "pass2_structure", "pass3_delivery", "classify"]
+    pass_to_model = {
+        "pass1_biblical": MODELS["biblical"],
+        "pass2_structure": MODELS["structure"],
+        "pass3_delivery": MODELS["delivery"],
+        "classify": MODELS["classify"],
+    }
+    pass_to_key = {
+        "pass1_biblical": "biblical", "pass2_structure": "structure",
+        "pass3_delivery": "delivery", "classify": "classify",
+    }
+    token_est = {p: estimate_tokens(pass_to_key[p], transcript_word_count) for p in passes}
+
+    deployment_passes = {}
+    for p in passes:
+        deployment_passes.setdefault(pass_to_model[p], []).append(p)
+
+    deployment_batches = {}
+    for model, model_passes in deployment_passes.items():
+        limit = int(DEPLOYMENT_LIMITS.get(model, {"tpm": 50_000})["tpm"] * 0.8)
+        batches, current, current_tokens = [], [], 0
+        for p in model_passes:
+            if current_tokens + token_est[p] > limit and current:
+                batches.append(current)
+                current, current_tokens = [p], token_est[p]
+            else:
+                current.append(p)
+                current_tokens += token_est[p]
+        if current:
+            batches.append(current)
+        deployment_batches[model] = batches
+
+    max_batches = max(len(b) for b in deployment_batches.values())
+    execution_plan = []
+    for i in range(max_batches):
+        batch = []
+        for batches in deployment_batches.values():
+            if i < len(batches):
+                batch.extend(batches[i])
+        execution_plan.append(batch)
+    return execution_plan, token_est
 
 
 def pass1_biblical(client, transcript):
@@ -72,7 +152,8 @@ def pass1_biblical(client, transcript):
         messages=[{"role": "user", "content": f"""You are a biblical scholarship engine analyzing a sermon transcript. Return JSON with:
 
 - "biblical_accuracy": {{"score": 0-100, "scripture_refs_found": [list of "Book Chapter:Verse" references detected], "refs_used_in_context": count, "refs_out_of_context": count, "reasoning": "..."}}
-- "time_in_the_word": {{"score": 0-100, "scripture_percentage": estimated %, "anecdote_percentage": estimated %, "reasoning": "..."}}
+- "time_in_the_word": {{"score": 0-100, "biblical_content_pct": estimated %, "direct_quotation_pct": estimated %, "anecdote_pct": estimated %, "reasoning": "..."}}
+  IMPORTANT: "Time in the Word" measures BIBLICAL CONTENT DENSITY — not just direct quotation. Score based on how much is grounded in biblical truth (quoted, taught, applied, exposited) vs secular content. 90-100=nearly all biblical, 70-89=majority, 50-69=mix, 30-49=more illustration, 0-29=minimal.
 - "passage_focus": {{"score": 0-100, "main_passage": "...", "time_on_main_passage_pct": %, "tangent_count": int, "reasoning": "..."}}
 
 Be rigorous. Check whether each scripture reference is used in its proper context.
@@ -127,19 +208,35 @@ Return JSON:
 
 
 def classify_sermon(client, transcript):
+    """POC #8 fix: sample beginning + middle + end instead of just first 3000 chars."""
+    words = transcript.split()
+    n = len(words)
+    third = n // 3
+    first = " ".join(words[:min(250, third)])
+    middle = " ".join(words[max(0, n//2 - 125):n//2 + 125])
+    last = " ".join(words[max(0, n - 250):])
+
     resp = client.chat.completions.create(
         model=MODELS["classify"], response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "Classify the sermon type. Return JSON only."},
             {"role": "user", "content": f"""Classify as: expository, topical, or survey.
-- Expository: deep dive into a single passage, verse-by-verse
-- Topical: organized around a theme, drawing from multiple passages
+- Expository: deep dive into a single passage, verse-by-verse. Even if the intro has anecdotes or background, if the core walks through a specific passage, it's expository.
+- Topical: organized around a theme, drawing from multiple unrelated passages
 - Survey: overview of a large section of scripture
+
+IMPORTANT: Don't judge only by the intro. Look at MIDDLE and END sections.
 
 Return: {{"sermon_type": "expository|topical|survey", "confidence": 0-100, "reasoning": "one sentence"}}
 
-TRANSCRIPT (first 3000 chars):
-{transcript[:3000]}"""}])
+TRANSCRIPT — BEGINNING:
+{first}
+
+TRANSCRIPT — MIDDLE:
+{middle}
+
+TRANSCRIPT — END:
+{last}"""}])
     return json.loads(resp.choices[0].message.content)
 
 
@@ -177,6 +274,9 @@ def run(audio_path):
         pv = pitch.selected_array["frequency"]
         voiced = pv[pv > 0]
         iv = intensity.values[0]
+        # POC #8 fix: filter intensity noise floor
+        noise_floor = np.percentile(iv, 5)
+        iv_filtered = iv[iv > noise_floor]
         threshold = np.percentile(iv, 20)
         transitions = np.diff((iv < threshold).astype(int))
         pause_count = int(np.sum(transitions == 1))
@@ -184,38 +284,51 @@ def run(audio_path):
             "pitch_mean_hz": round(float(np.mean(voiced)), 1),
             "pitch_std_hz": round(float(np.std(voiced)), 1),
             "pitch_range_hz": round(float(np.max(voiced) - np.min(voiced)), 1),
-            "intensity_mean_db": round(float(np.mean(iv)), 1),
-            "intensity_range_db": round(float(np.max(iv) - np.min(iv)), 1),
+            "intensity_mean_db": round(float(np.mean(iv_filtered)), 1),
+            "intensity_range_db": round(float(np.max(iv_filtered) - np.min(iv_filtered)), 1),
+            "intensity_noise_floor_db": round(float(noise_floor), 1),
             "pause_count": pause_count,
             "pauses_per_minute": round(pause_count / (snd.duration / 60), 1),
             "duration_seconds": round(snd.duration, 1),
         }
 
-    # Run 3 parallel passes + classification
-    print(f"\n[Scoring] 3 parallel passes + classification on {len(text.split())} words...")
+    # Run throttle-aware passes
+    print(f"\n[Scoring] Throttle-aware scheduling on {len(text.split())} words...")
     key = get_openai_key()
     client = make_client(key)
+
+    execution_plan, token_est = schedule_passes(len(text.split()))
+    print(f"  Token estimates: {', '.join(f'{p}={t:,}' for p, t in token_est.items())}")
+    print(f"  Execution plan: {len(execution_plan)} batch(es) — {[b for b in execution_plan]}")
+
+    pass_fns = {
+        "pass1_biblical": lambda: pass1_biblical(client, text),
+        "pass2_structure": lambda: pass2_structure(client, text),
+        "pass3_delivery": lambda: pass3_delivery(client, text, audio),
+        "classify": lambda: classify_sermon(client, text),
+    }
 
     results = {}
     timings = {}
 
-    def timed(name, fn, *args):
-        t0 = time.time()
-        r = fn(*args)
-        timings[name] = round(time.time() - t0, 1)
-        return name, r
+    for batch_idx, batch in enumerate(execution_plan):
+        if batch_idx > 0:
+            print(f"  ⏳ Waiting 60s for TPM window reset before batch {batch_idx + 1}...")
+            time.sleep(60)
+        print(f"  Batch {batch_idx + 1}/{len(execution_plan)}: {batch}")
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [
-            pool.submit(timed, "pass1_biblical", pass1_biblical, client, text),
-            pool.submit(timed, "pass2_structure", pass2_structure, client, text),
-            pool.submit(timed, "pass3_delivery", pass3_delivery, client, text, audio),
-            pool.submit(timed, "classify", classify_sermon, client, text),
-        ]
-        for f in as_completed(futures):
-            name, data = f.result()
-            results[name] = data
-            print(f"  ✓ {name} ({timings[name]}s)")
+        def timed(name):
+            t0 = time.time()
+            r = call_with_backoff(pass_fns[name])
+            timings[name] = round(time.time() - t0, 1)
+            return name, r
+
+        with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+            futures = [pool.submit(timed, name) for name in batch]
+            for f in as_completed(futures):
+                name, data = f.result()
+                results[name] = data
+                print(f"    ✓ {name} ({timings[name]}s)")
 
     p1, p2, p3 = results["pass1_biblical"], results["pass2_structure"], results["pass3_delivery"]
     classification = results["classify"]

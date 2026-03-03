@@ -152,7 +152,12 @@ def transcribe_azure(audio_path: str, speech_key: str, cache_path: Path) -> dict
 # --- Step 2: Parselmouth Audio Analysis ---
 
 def analyze_audio(audio_path: str) -> dict:
-    """Extract pitch, intensity, pause metrics."""
+    """Extract pitch, intensity, pause metrics.
+
+    POC #8 fix: filter intensity frames below 5th percentile noise floor
+    to avoid physically impossible dB ranges (e.g., 384 dB from silence frames).
+    Pitch already filters unvoiced frames (pv > 0).
+    """
     import parselmouth
 
     snd = parselmouth.Sound(audio_path)
@@ -163,6 +168,10 @@ def analyze_audio(audio_path: str) -> dict:
     voiced = pv[pv > 0]
     iv = intensity.values[0]
 
+    # Filter intensity: remove bottom 5th percentile (near-silence/artifact frames)
+    noise_floor = np.percentile(iv, 5)
+    iv_filtered = iv[iv > noise_floor]
+
     threshold = np.percentile(iv, 20)
     transitions = np.diff((iv < threshold).astype(int))
     pause_count = int(np.sum(transitions == 1))
@@ -172,8 +181,9 @@ def analyze_audio(audio_path: str) -> dict:
         "pitch_mean_hz": round(float(np.mean(voiced)), 1) if len(voiced) else 0,
         "pitch_std_hz": round(float(np.std(voiced)), 1) if len(voiced) else 0,
         "pitch_range_hz": round(float(np.max(voiced) - np.min(voiced)), 1) if len(voiced) else 0,
-        "intensity_mean_db": round(float(np.mean(iv)), 1),
-        "intensity_range_db": round(float(np.max(iv) - np.min(iv)), 1),
+        "intensity_mean_db": round(float(np.mean(iv_filtered)), 1) if len(iv_filtered) else 0,
+        "intensity_range_db": round(float(np.max(iv_filtered) - np.min(iv_filtered)), 1) if len(iv_filtered) else 0,
+        "intensity_noise_floor_db": round(float(noise_floor), 1),
         "pause_count": pause_count,
         "pauses_per_minute": round(pause_count / duration_min, 1),
         "duration_seconds": round(snd.duration, 1),
@@ -183,13 +193,121 @@ def analyze_audio(audio_path: str) -> dict:
 # --- Step 3: Multi-Model LLM Passes ---
 
 def make_client(keys):
-    """Create Azure OpenAI client."""
+    """Create Azure OpenAI client. Retries handled by ThrottleScheduler."""
     from openai import AzureOpenAI
     return AzureOpenAI(
         api_key=keys["openai_key"],
         api_version="2025-01-01-preview",
         azure_endpoint=keys["openai_endpoint"],
+        max_retries=0,  # We handle retries ourselves for throttle awareness
+        timeout=300,
     )
+
+
+# --- Throttle-Aware Scheduler ---
+# Instead of blindly firing parallel requests and hoping, estimate token usage
+# per call and schedule based on known TPM/RPM limits per deployment.
+
+# Known deployment limits (TPM = tokens per minute, RPM = requests per minute)
+DEPLOYMENT_LIMITS = {
+    "o4-mini":     {"tpm": 80_000, "rpm": 80},
+    "gpt-41":      {"tpm": 50_000, "rpm": 50},
+    "gpt-41-mini": {"tpm": 80_000, "rpm": 80},
+}
+
+# Rough token estimate: ~1.3 tokens per word for input, ~800 tokens output per pass
+# o4-mini reasoning generates internal tokens that count against TPM too (~3-5x output)
+TOKEN_RATIO = 1.3
+EST_OUTPUT_TOKENS = {"biblical": 800, "structure": 800, "delivery": 800, "classify": 200}
+O4_MINI_REASONING_MULTIPLIER = 5  # reasoning tokens are ~5x visible output
+
+
+def estimate_tokens(pass_name: str, transcript_word_count: int) -> int:
+    """Estimate total tokens (input + output + reasoning) for a pass."""
+    prompt_overhead = 500  # system prompt + formatting
+    input_tokens = int(transcript_word_count * TOKEN_RATIO) + prompt_overhead
+    output_tokens = EST_OUTPUT_TOKENS.get(pass_name, 800)
+    total = input_tokens + output_tokens
+    if MODELS.get(pass_name) == "o4-mini":
+        total += output_tokens * O4_MINI_REASONING_MULTIPLIER
+    return total
+
+
+def call_with_backoff(fn, *args, initial_wait=60, max_retries=3):
+    """Wrap an LLM call with exponential backoff for 429 rate limits."""
+    for attempt in range(max_retries + 1):
+        try:
+            return fn(*args)
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries:
+                wait = initial_wait * (2 ** attempt)
+                print(f"    ⚠ Rate limited, waiting {wait}s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                raise
+
+
+def schedule_passes(transcript_word_count: int) -> list[list[str]]:
+    """Group passes into sequential batches that fit within TPM limits.
+
+    Passes using different deployments can run in parallel.
+    Passes sharing a deployment are sequenced if their combined tokens exceed TPM.
+    Returns list of batches, each batch is a list of pass names to run concurrently.
+    """
+    passes = ["pass1_biblical", "pass2_structure", "pass3_delivery", "classify"]
+    pass_to_model = {
+        "pass1_biblical": MODELS["biblical"],
+        "pass2_structure": MODELS["structure"],
+        "pass3_delivery": MODELS["delivery"],
+        "classify": MODELS["classify"],
+    }
+    pass_to_key = {
+        "pass1_biblical": "biblical",
+        "pass2_structure": "structure",
+        "pass3_delivery": "delivery",
+        "classify": "classify",
+    }
+
+    # Estimate tokens per pass
+    token_est = {p: estimate_tokens(pass_to_key[p], transcript_word_count) for p in passes}
+
+    # Group by deployment
+    deployment_passes = {}
+    for p in passes:
+        model = pass_to_model[p]
+        deployment_passes.setdefault(model, []).append(p)
+
+    # For each deployment, split passes into sub-batches that fit within TPM
+    # Use 80% of limit as safety margin
+    deployment_batches = {}
+    for model, model_passes in deployment_passes.items():
+        limit = int(DEPLOYMENT_LIMITS.get(model, {"tpm": 50_000})["tpm"] * 0.8)
+        batches = []
+        current_batch = []
+        current_tokens = 0
+        for p in model_passes:
+            if current_tokens + token_est[p] > limit and current_batch:
+                batches.append(current_batch)
+                current_batch = [p]
+                current_tokens = token_est[p]
+            else:
+                current_batch.append(p)
+                current_tokens += token_est[p]
+        if current_batch:
+            batches.append(current_batch)
+        deployment_batches[model] = batches
+
+    # Merge into execution batches: batch N = all deployment sub-batches at index N
+    max_batches = max(len(b) for b in deployment_batches.values())
+    execution_plan = []
+    for i in range(max_batches):
+        batch = []
+        for model, batches in deployment_batches.items():
+            if i < len(batches):
+                batch.extend(batches[i])
+        execution_plan.append(batch)
+
+    return execution_plan, token_est
 
 
 def pass1_biblical(client, transcript: str) -> dict:
@@ -210,10 +328,13 @@ def pass1_biblical(client, transcript: str) -> dict:
   }}
 - "time_in_the_word": {{
     "score": 0-100,
-    "scripture_percentage": estimated % of sermon spent in scripture/biblical content,
-    "anecdote_percentage": estimated % spent on personal stories/illustrations,
+    "biblical_content_pct": estimated % of sermon grounded in biblical truth (quoted, taught, applied, or exposited),
+    "direct_quotation_pct": estimated % that is direct scripture reading/quotation,
+    "anecdote_pct": estimated % spent on personal stories/illustrations/secular content,
     "reasoning": brief explanation
   }}
+  IMPORTANT: "Time in the Word" measures BIBLICAL CONTENT DENSITY — not just direct scripture quotation. A preacher who weaves biblical theology, doctrine, and scriptural concepts throughout scores HIGH even without reading long passages aloud. Score based on how much is grounded in biblical truth vs secular content.
+  90-100: Nearly every point rooted in scripture/theology. 70-89: Majority biblically grounded. 50-69: Mix. 30-49: More illustration than substance. 0-29: Minimal biblical content.
 - "passage_focus": {{
     "score": 0-100,
     "main_passage": the primary passage being preached,
@@ -307,7 +428,20 @@ Return JSON:
 
 
 def classify_sermon(client, transcript: str) -> dict:
-    """GPT-4.1-mini: Sermon type classification."""
+    """GPT-4.1-mini: Sermon type classification.
+
+    POC #8 fix: send first + middle + last sections of transcript instead of
+    just first 2000 chars. Scheer's 1 Peter 1:1-2 expository sermon was
+    misclassified as topical because the intro was all anecdote/survey.
+    """
+    words = transcript.split()
+    n = len(words)
+    # Sample ~1500 chars from beginning, middle, and end
+    third = n // 3
+    first = " ".join(words[:min(250, third)])
+    middle = " ".join(words[max(0, n//2 - 125):n//2 + 125])
+    last = " ".join(words[max(0, n - 250):])
+
     resp = client.chat.completions.create(
         model=MODELS["classify"],
         response_format={"type": "json_object"},
@@ -315,14 +449,22 @@ def classify_sermon(client, transcript: str) -> dict:
             {"role": "system", "content": "Classify the sermon type. Return JSON only."},
             {"role": "user", "content": f"""Classify this sermon as one of: expository, topical, or survey.
 
-- Expository: deep dive into a single passage, verse-by-verse or section-by-section
-- Topical: organized around a theme/topic, drawing from multiple passages
+- Expository: deep dive into a single passage, verse-by-verse or section-by-section. Even if the intro has anecdotes or background context, if the core of the sermon walks through a specific passage verse-by-verse, it's expository.
+- Topical: organized around a theme/topic, drawing from multiple unrelated passages
 - Survey: overview of a large section of scripture (multiple chapters or a whole book)
+
+IMPORTANT: Don't judge only by the intro. Many expository sermons open with illustrations or historical context before diving into the text. Look at the MIDDLE and END sections to see if the preacher is working through a specific passage.
 
 Return: {{"sermon_type": "expository|topical|survey", "confidence": 0-100, "reasoning": "one sentence"}}
 
-TRANSCRIPT (first 2000 chars):
-{transcript[:2000]}"""}
+TRANSCRIPT — BEGINNING:
+{first}
+
+TRANSCRIPT — MIDDLE:
+{middle}
+
+TRANSCRIPT — END:
+{last}"""}
         ],
     )
     return json.loads(resp.choices[0].message.content)
@@ -385,31 +527,47 @@ def run(audio_path: str, skip_transcribe: bool):
     print(f"  ✓ Volume: {audio['intensity_range_db']}dB range")
     print(f"  ✓ Pauses: {audio['pause_count']} ({audio['pauses_per_minute']}/min)")
 
-    # Step 3: Three parallel LLM passes + classification
-    print("\n[Step 3] Multi-Model LLM Analysis (3 passes + classification)")
+    # Step 3: Throttle-aware LLM passes
+    print("\n[Step 3] Multi-Model LLM Analysis (throttle-aware scheduling)")
     client = make_client(keys)
     text = transcript["text"]
+    word_count = len(text.split())
+
+    # Plan execution based on token estimates vs deployment TPM limits
+    execution_plan, token_est = schedule_passes(word_count)
+    print(f"  Token estimates: {', '.join(f'{p}={t:,}' for p, t in token_est.items())}")
+    print(f"  Execution plan: {len(execution_plan)} batch(es) — {[b for b in execution_plan]}")
+
+    pass_fns = {
+        "pass1_biblical": lambda: pass1_biblical(client, text),
+        "pass2_structure": lambda: pass2_structure(client, text),
+        "pass3_delivery": lambda: pass3_delivery(client, text, audio),
+        "classify": lambda: classify_sermon(client, text),
+    }
 
     results = {}
     timings = {}
 
-    def timed_call(name, fn, *args):
-        t0 = time.time()
-        r = fn(*args)
-        timings[name] = round(time.time() - t0, 1)
-        return name, r
+    for batch_idx, batch in enumerate(execution_plan):
+        if batch_idx > 0:
+            # Wait 60s between batches for TPM window to reset
+            print(f"  ⏳ Waiting 60s for TPM window reset before batch {batch_idx + 1}...")
+            time.sleep(60)
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [
-            pool.submit(timed_call, "pass1_biblical", pass1_biblical, client, text),
-            pool.submit(timed_call, "pass2_structure", pass2_structure, client, text),
-            pool.submit(timed_call, "pass3_delivery", pass3_delivery, client, text, audio),
-            pool.submit(timed_call, "classify", classify_sermon, client, text),
-        ]
-        for f in as_completed(futures):
-            name, data = f.result()
-            results[name] = data
-            print(f"  ✓ {name} complete ({timings[name]}s)")
+        print(f"  Batch {batch_idx + 1}/{len(execution_plan)}: {batch}")
+
+        def timed_call(name):
+            t0 = time.time()
+            r = call_with_backoff(pass_fns[name])
+            timings[name] = round(time.time() - t0, 1)
+            return name, r
+
+        with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+            futures = [pool.submit(timed_call, name) for name in batch]
+            for f in as_completed(futures):
+                name, data = f.result()
+                results[name] = data
+                print(f"    ✓ {name} ({timings[name]}s)")
 
     # Step 4: Assemble raw scores
     p1 = results["pass1_biblical"]

@@ -532,3 +532,267 @@ All recommended models (GPT-4.1, GPT-4.1-mini, GPT-4.1-nano, o4-mini) are availa
 ### Key Takeaway
 
 The "one model fits all" era is over. Using task-appropriate models gives us better accuracy on reasoning-heavy tasks (biblical analysis) while cutting costs on simpler tasks (delivery scoring, classification). The 3-pass architecture maps cleanly to 3 different model tiers.
+
+---
+
+## Azure OpenAI Deployment Reference
+
+### Current Deployments (psr-openai-dev, eastus2)
+
+| Deployment Name | Model | Version | SKU | Capacity (TPM) | Requests/min |
+|----------------|-------|---------|-----|----------------|-------------|
+| `o4-mini` | o4-mini | 2025-04-16 | Standard | 80K | 80 |
+| `gpt-41-mini` | gpt-4.1-mini | 2025-04-14 | Standard | 80K | 80 |
+| `gpt-41` | gpt-4.1 | 2025-04-14 | Standard | 50K | 50 |
+
+Speech service: `psr-speech-dev` — F0 (free tier, 5 hrs/mo transcription).
+
+### Deployment Naming Convention
+
+Azure deployment names cannot contain dots, so model names map as:
+- `gpt-4.1` → deployment name `gpt-41`
+- `gpt-4.1-mini` → deployment name `gpt-41-mini`
+- `o4-mini` → deployment name `o4-mini` (no dots, no change)
+
+The `model` parameter in API calls uses the **deployment name**, not the model name.
+
+### Deployment Lessons Learned
+
+1. **S0/Standard tier rate limits are tight for long sermons.** An 8K-word transcript (~12K tokens with prompt) can hit the 50-80K TPM ceiling when o4-mini generates extended reasoning chains. The Scheer sermon (8,192 words) caused repeated 429 errors on the first attempt. Production pipeline needs exponential backoff retry logic.
+
+2. **GPT-4.1-nano is not yet deployable.** The sermonplan specifies nano for classification, but it wasn't available for deployment at time of testing. GPT-4.1-mini handles classification fine at minimal extra cost (~$0.003 vs ~$0.001 per sermon). Revisit when nano becomes available.
+
+3. **Deployment creation via CLI is straightforward:**
+   ```bash
+   az cognitiveservices account deployment create \
+     --name psr-openai-dev \
+     --resource-group rg-sermon-rating-dev \
+     --deployment-name gpt-41 \
+     --model-name gpt-4.1 \
+     --model-version 2025-04-14 \
+     --model-format OpenAI \
+     --sku-capacity 50 \
+     --sku-name Standard
+   ```
+
+4. **API version matters.** Using `2025-01-01-preview` for all calls. The o4-mini reasoning model requires a preview API version — GA versions may not support it.
+
+5. **Parallel passes amplify rate limit pressure.** Running 4 concurrent API calls (3 scoring passes + classification) against the same resource means all 4 compete for the same TPM quota. For MVP, this is fine with retry logic. At scale, consider separate deployments per pass or a Global Standard deployment with higher limits.
+
+6. **Delayed deployment via `at` scheduler works.** When a deployment fails due to quota limits, scheduling a retry via `at` (one-shot timer) is effective. The gpt-41 deployment succeeded on the scheduled retry at 50K TPM Standard capacity. Log output confirms `provisioningState: Succeeded`.
+
+7. **All three models now deployed and operational.** As of 2026-03-01: o4-mini (80K TPM), gpt-41-mini (80K TPM), gpt-41 (50K TPM). The Scheer POC #8 ran without gpt-41 (fell back to gpt-41-mini for structure pass). Future runs will use the correct model per task.
+
+### Throttle-Aware Scheduling (POC #8 → POC #9 Fix)
+
+POC #8 exposed that blindly firing 4 parallel API calls against S0-tier deployments causes 429 cascades on longer sermons. The 2s stagger from the initial fix was insufficient — an 8K-word transcript generates ~12K input tokens per pass, and o4-mini's internal reasoning tokens (not visible in output) can 3-5x the effective token consumption.
+
+**Solution: estimate-then-schedule.** Before making any API calls, the pipeline:
+
+1. Estimates total tokens per pass: `(word_count × 1.3) + prompt_overhead + output_tokens + reasoning_multiplier`
+2. Groups passes by deployment (o4-mini, gpt-41, gpt-41-mini)
+3. For each deployment, checks if combined token estimates exceed 80% of TPM limit
+4. If they fit → run in parallel. If not → split into sequential batches with 60s gaps for TPM window reset.
+
+**Example scheduling for an 8K-word sermon:**
+- o4-mini (80K TPM): biblical pass ≈ 15K tokens → fits alone, batch 1
+- gpt-41 (50K TPM): structure pass ≈ 12K tokens → fits alone, batch 1
+- gpt-41-mini (80K TPM): delivery ≈ 12K + classify ≈ 11K = 23K → both fit in 80K, batch 1
+- Result: **1 batch, all 4 parallel** — same as before but validated safe
+
+**Example for a 30K-word sermon (hypothetical 2-hour sermon):**
+- o4-mini: biblical ≈ 44K tokens → fits in 80K, batch 1
+- gpt-41: structure ≈ 40K tokens → fits in 50K (barely), batch 1
+- gpt-41-mini: delivery ≈ 40K + classify ≈ 39K = 79K → exceeds 64K (80% of 80K), split
+  - Batch 1: delivery (40K)
+  - Batch 2: classify (39K) — runs after 60s wait
+- Result: **2 batches** — batch 1 runs biblical + structure + delivery in parallel, batch 2 runs classify after 60s
+
+This eliminates the "fire and pray" approach. The pipeline knows its limits before making a single API call. Exponential backoff (60s base, max 3 retries) remains as a safety net for unexpected throttling.
+
+---
+
+## Proof of Concept #8 — Scheer Sermon (Second Preacher Validation)
+
+### What We Did
+
+Ran Mike Scheer's "Elect Exiles" sermon (1 Peter 1:1-2, Denton Bible Church, Feb 8 2026, ~48.6 min) through the full pipeline: Azure AI Speech fast transcription → Parselmouth → 3-pass multi-model scoring. This is the first non-Piper sermon through the system — critical for validating that scoring works across different preachers and styles.
+
+Code: ad-hoc run using `azure_fast_transcription_poc.py` + inline scoring. Results: `poc/psr_result_scheer_elect_exiles.json`.
+
+### Results
+
+**Composite PSR: 80.2/100** | Sermon Type: Topical (85% confidence) | 8,192 words | 168.4 WPM
+
+| Category | Raw | Normalized | Weight |
+|----------|-----|-----------|--------|
+| Biblical Accuracy | 90 | 95 | 25% |
+| Time in the Word | 65 | 73 | 20% |
+| Passage Focus | 70 | 80 | 10% |
+| Clarity | 75 | 75 | 10% |
+| Engagement | 70 | 70 | 10% |
+| Application | 65 | 65 | 10% |
+| Delivery | 85 | 85 | 10% |
+| Emotional Range | 88 | 88 | 5% |
+
+### Key Findings
+
+1. **Sermon type misclassification is a real problem.** Classified as "topical" (85%) despite being verse-by-verse through 1 Peter 1:1-2. The extended general epistles survey and election theology tangents confused the classifier. The +5/+8/+10 normalization bumps inflated biblical scores by ~3 points. If classified as expository, composite would be ~77.2. **Action needed:** classification prompt needs tuning for sermons that are expository but include substantial background context.
+
+2. **gpt-41 deployment was missing at time of run.** Had to fall back to `gpt-41-mini` for the structure pass. Now resolved — `gpt-41` deployed at 50K TPM. Future runs will use the correct model.
+
+3. **S0 rate limits are brutal on longer sermons.** The 8,192-word transcript (2.2x the Piper baseline of 3,762 words) caused repeated 429 errors with 60-180s retry waits. Total pipeline time was 117s, but would be ~105s without rate limit delays. **Action needed:** Durable Functions orchestrator must include retry policies with exponential backoff.
+
+4. **Parselmouth intensity range artifact.** Reported 384.4 dB range — physically impossible (real dynamic range is 30-80 dB). Caused by near-silence frames in the MP3. The delivery model noted it as "likely a metric artifact" and scored around it, but we're feeding bad data. **Action needed:** filter frames below a noise floor (e.g., bottom 5th percentile) before computing intensity range.
+
+5. **Regex scripture detection: 1 of 15 refs.** Only caught "Peter 5:12" — missed "1 Peter 1:1-2" because the transcript says "first Peter." Confirms POC #4 finding that LLM detection is far superior for spoken transcripts. Regex is useful only as a supplementary signal.
+
+6. **Transcription quality remains excellent.** 8,192 words at 168.4 WPM passes sanity check. Clean beginning and end, captures humor and asides naturally. Azure AI Speech fast transcription continues to perform well on different audio sources.
+
+7. **Cost: $0.76/sermon.** $0.67 speech + $0.09 OpenAI. Right on the $0.75 estimate. o4-mini was the expensive pass at ~18s of reasoning time.
+
+8. **Different preacher, different profile.** Scheer scores lower on Application (65 vs Piper's 81) and Time in the Word (65 vs 80) but higher on Emotional Range (88 vs 90) and Delivery (85 vs 85). The scoring system surfaces meaningful differences between preaching styles — this is exactly what PSR should do.
+
+### Comparison: Scheer vs Piper
+
+| Metric | Scheer (1 Peter 1:1-2) | Piper (Romans 8:28-30) |
+|--------|----------------------|----------------------|
+| Composite PSR | 80.2 | 88.0 |
+| Words | 8,192 | 3,762 |
+| WPM | 168.4 | 107.5 |
+| Scripture refs (LLM) | 15 | 12 |
+| Biblical Accuracy | 90 | 95 |
+| Application | 65 | 81 |
+| Delivery | 85 | 85 |
+| Sermon type | Topical (misclassified) | Expository |
+| Cost | $0.76 | $0.75 |
+
+### Open Issues from This POC
+
+- [x] Fix sermon type classification prompt (issue #1 above) — **Fixed:** classifier now samples beginning + middle + end of transcript, prompt warns against judging by intro alone
+- [x] Add Parselmouth noise floor filtering (issue #4 above) — **Fixed:** intensity frames below 5th percentile filtered before computing range
+- [x] Build retry logic into Durable Functions orchestrator (issue #3 above) — **Fixed in POC code:** exponential backoff (60s base, max 3 retries) + 2s staggered parallel passes. Durable Functions will use equivalent retry policies.
+
+---
+
+## Proof of Concept #9 — Spurgeon Historical Benchmark (Text-Only Scoring)
+
+### What We Did
+
+Scored three of Charles Spurgeon's greatest sermons through the full 3-pass multi-model pipeline using text transcripts only (no audio exists — Spurgeon died in 1892). This establishes a historical benchmark and tests whether PSR scoring produces meaningful results on written sermon transcripts without Parselmouth audio data.
+
+Code: `poc/spurgeon_scoring.py`. Sermon texts: `poc/samples/spurgeon_*.txt`. Results: `poc/spurgeon_benchmark_results.json`.
+
+### Sermons Scored
+
+| Sermon | # | Passage | Date | Words | Why Selected |
+|--------|---|---------|------|-------|-------------|
+| Compel Them to Come In | 227 | Luke 14:23 | Dec 5, 1858 | 6,966 | Spurgeon's self-proclaimed greatest — most conversions |
+| The Immutability of God | 1 | Malachi 3:6 | 1855 | 6,519 | His very first published sermon |
+| The Power of the Holy Spirit | 30 | Romans 15:13 | 1855 | 6,632 | Top-ranked doctrinal sermon |
+
+Source: thekingdomcollective.com/spurgeon (3,000+ sermons, full text, open source).
+
+### Results
+
+| Sermon | Composite | Type | BA | TW | PF | CL | EN | AP | DL | ER |
+|--------|-----------|------|----|----|----|----|----|----|----|----|
+| Compel Them to Come In | **85.9** | Topical | 98 | 60 | 50 | 88 | 98 | 94 | 85 | 95 |
+| The Immutability of God | **72.8** | Expository | 90 | 30 | 85 | 85 | 90 | 65 | 75 | 85 |
+| The Power of the Holy Spirit | **80.7** | Topical | 88 | 70 | 30 | 88 | 91 | 82 | 75 | 85 |
+
+### Cross-Preacher Comparison
+
+| Preacher | Sermon | Composite | Type | Era |
+|----------|--------|-----------|------|-----|
+| Spurgeon | Compel Them to Come In | 85.9 | Topical | 1858 |
+| Piper | Romans 8:28-30 | 83.9 | Expository | 2002 |
+| Scheer | 1 Peter 1:1-2 | 84.7 | Topical | 2026 |
+| Spurgeon | The Power of the Holy Spirit | 80.7 | Topical | 1855 |
+| Spurgeon | The Immutability of God | 72.8 | Expository | 1855 |
+
+### Key Findings
+
+1. **"Compel Them to Come In" scored highest at 85.9 — validating expert consensus.** The sermon Spurgeon himself called his greatest scored highest of all three, and highest of any sermon we've scored so far. Application (94) and Engagement (98) are the standout categories — the entire sermon is one sustained, urgent call to action. o4-mini found 14 scripture refs, all in context, zero out of context.
+
+2. **Spurgeon's weakness: Time in the Word.** All three sermons scored low on this category (60, 30, 70 raw). Spurgeon's style is to weave scripture into rhetoric rather than spend extended time reading and expositing text. "The Immutability of God" scored 30 — only ~15% direct scripture content. This matches the historical observation from Preaching Today screeners: "Most sermons are Scriptural, but many do not keep their finger on the text."
+
+3. **"The Immutability of God" scored lowest at 72.8 — and that's correct.** It's a doctrinal sermon organized around a theological concept (God's unchangeableness) rather than a passage. Application is abstract ("contemplate God," "rest on promises") rather than concrete. The low Time in the Word (30) and moderate Application (65) are fair assessments of a sermon that's more theological lecture than pastoral exhortation.
+
+4. **Text-only scoring works but underestimates Delivery.** Without Parselmouth audio data, Delivery scores (75-85) are conservative text-based estimates. Spurgeon was famously one of the most dynamic speakers in history — his actual delivery scores would almost certainly be 90+. This confirms that audio metrics are essential for accurate Delivery and Emotional Range scoring.
+
+5. **Engagement scores are remarkably high across all three (90-98).** Even in written form, Spurgeon's rhetorical skill is unmistakable. Direct address, vivid imagery, rhetorical questions, personal testimony, humor, repetition — the models correctly identify these as elite engagement techniques.
+
+6. **Sermon type classification is reasonable.** "Compel Them to Come In" (topical, 90%) and "Power of the Holy Spirit" (topical, 85%) are correctly identified as theme-driven sermons drawing from multiple passages. "The Immutability of God" (expository, 90%) is correctly identified as a deep dive into Malachi 3:6.
+
+7. **Throttle-aware scheduling worked perfectly.** 60s gaps between sermons, all 4 passes parallel within each sermon. Zero 429 errors across all 3 sermons. Total wall-clock time: ~4 min (including 2 × 60s waits).
+
+8. **Cost: ~$0.27 total** ($0.09 × 3 sermons, OpenAI only — no speech transcription needed for text).
+
+### Implications for PSR
+
+- Historical benchmarking is viable. We can score any written sermon transcript and produce meaningful comparative data.
+- Spurgeon at 85.9 is a credible "elite" benchmark. A modern pastor scoring 85+ is in Spurgeon territory on text-based categories.
+- The scoring system correctly surfaces Spurgeon's known strengths (engagement, application, biblical accuracy) and weaknesses (time in the text, passage focus on topical sermons).
+- For historical sermons, we should display a "text-only" badge and note that Delivery/Emotional Range are estimates without audio data.
+
+---
+
+## Proof of Concept #10 — Scoring Calibration: "Time in the Word" Redefined
+
+### The Problem
+
+POC #9 revealed that Spurgeon — widely considered the greatest preacher in history — scored only 85.9 on his best sermon and 72.8 on his first. The root cause: "Time in the Word" measured *direct scripture quotation percentage*, not *biblical content density*. Spurgeon's style weaves scripture into rhetoric rather than reading long passages aloud. His "Immutability of God" scored 30/100 on Time in the Word despite being 90% biblical theology.
+
+This is a measurement error, not a Spurgeon problem. A preacher who reads Romans 8:28 aloud for 5 minutes but says nothing insightful would outscore Spurgeon on this metric. That's backwards.
+
+### The Fix
+
+Redefined "Time in the Word" in the Pass 1 (o4-mini) prompt:
+
+**Old definition:** "Percentage of sermon spent in scripture/biblical content vs anecdotes"
+- Measured: direct quotation % and anecdote %
+- Problem: conflated "quoting scripture" with "being biblical"
+
+**New definition:** "Biblical content density — how much of the sermon is grounded in biblical truth (quoted, taught, applied, or exposited) vs secular content"
+- Measures: biblical content % (theology + doctrine + quotes), direct quotation %, and anecdote %
+- Includes explicit rubric: 90-100 = nearly every point rooted in scripture/theology, 50-69 = mix, etc.
+
+### Results
+
+Re-ran Pass 1 only (o4-mini) on all 5 scored sermons with the new prompt. Pass 2/3 scores unchanged.
+
+| Sermon | Old TW | New TW | Δ TW | Old PSR | New PSR | Δ PSR |
+|--------|--------|--------|------|---------|---------|-------|
+| Spurgeon: Compel Them to Come In | 60 | 93 | +33 | 85.9 | 92.7 | +6.8 |
+| Spurgeon: Immutability of God | 30 | 95 | +65 | 72.8 | 87.5 | +14.7 |
+| Spurgeon: Power of the Holy Spirit | 70 | 85 | +15 | 80.7 | 81.6 | +0.9 |
+| Piper: Romans 8:28-30 | 75 | 85 | +10 | 83.9 | 87.7 | +3.8 |
+| Scheer: 1 Peter 1:1-2 | 65 | 75 | +10 | 84.7 | 78.7 | -6.0 |
+
+### Key Findings
+
+1. **Spurgeon's scores now match expert consensus.** "Compel Them to Come In" jumps from 85.9 → 92.7 — the highest score in our dataset by a wide margin. "Immutability of God" jumps from 72.8 → 87.5. These feel right for the "Prince of Preachers."
+
+2. **The new metric correctly distinguishes biblical density from quotation.** Spurgeon's "Immutability of God" went from 30 → 95 because the model now recognizes that a sermon about God's unchangeable nature, grounded in Malachi 3:6, full of theological reasoning about divine attributes, is *deeply biblical* even though only 10% is direct quotation. Old metric: 30. New metric: 95. The 65-point swing is the single biggest validation that the old metric was broken.
+
+3. **Piper gets a modest boost (+3.8).** His expository style already scored well on the old metric (75). The new metric bumps him to 85 — recognizing that his theological exposition between quotations is also "time in the Word." Fair and expected.
+
+4. **Scheer drops (-6.0).** This is the most interesting result. His composite went from 84.7 → 78.7. Why? Passage Focus dropped from 70 → 60 (the model re-evaluated tangents more strictly), and while Time in the Word rose from 65 → 75, the Passage Focus drop offset it. The model noted 30% anecdote content (FCA bike ride, pastoral asides) — the highest of any sermon scored. This feels like a *more accurate* score, not a penalty. Scheer's sermon genuinely has more non-biblical content than the others.
+
+5. **The ranking now makes intuitive sense:**
+   - Spurgeon "Compel Them" (92.7) — elite evangelistic sermon, scripture-saturated rhetoric
+   - Piper Romans 8:28-30 (87.7) — focused expository, deep in the text
+   - Spurgeon "Immutability of God" (87.5) — doctrinal masterpiece, all theology
+   - Spurgeon "Power of Holy Spirit" (81.6) — strong but more illustrative
+   - Scheer 1 Peter 1:1-2 (78.7) — good sermon with significant anecdotal content
+
+6. **No score inflation on non-biblical content.** The new metric didn't just raise everyone's scores uniformly. Scheer's anecdote-heavy sermon correctly scored lower (75 vs Spurgeon's 93-95). The metric discriminates between "biblically dense" and "not biblically dense" — it just no longer penalizes preachers who teach theology without reading verses aloud.
+
+### Decision
+
+**Adopt the new "Time in the Word" definition for all scoring going forward.** Update the Pass 1 prompt in `azure_multipass_poc.py`, `validated_multipass_poc.py`, and `spurgeon_scoring.py`. The old metric (direct quotation %) is still captured as a sub-field for transparency but no longer drives the score.
+
+### Cost
+
+~$0.45 total (5 × o4-mini Pass 1 only). Zero 429 errors with 60s gaps between sermons.

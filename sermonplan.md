@@ -58,8 +58,8 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 
 ### Open Decisions
 - [ ] Scoring calibration strategy — normalization curves are hardcoded estimates (topical +5/+8/+10 for biblical categories). After 20-30 scored sermons across types, revisit with real data. Current baselines after POC #10 calibration: Spurgeon "Compel Them" = 92.7 (text-only, topical — highest), Piper = 87.7 (expository), Spurgeon "Immutability" = 87.5 (expository), Spurgeon "Power of HS" = 81.6 (topical), Scheer = 78.7 (topical/misclassified).
-- [ ] Cost monitoring / budget alerts on Azure before deploying — $100/mo budget set (see AZURE_SETUP.md), need to verify alerts fire
-- [ ] Cosmos DB serverless vs simpler alternatives (friend to confirm)
+- [x] Cost monitoring / budget alerts on Azure before deploying — $100/mo budget verified active with email alerts at 50%, 75%, 100% (see AZURE_SETUP.md)
+- [ ] Cosmos DB serverless vs simpler alternatives — **Decision: Cosmos DB serverless.** IaC bead (sermon-1a3) is built around it. $0 at idle, ~$0.01/sermon for reads/writes at MVP volume. Revisit only if a friend has a compelling alternative.
 - [ ] Cosmos DB partition key — using `/id` for MVP (simplest). Every feed query (`GET /api/sermons`) is a cross-partition query, which is Cosmos DB's most expensive operation. Fine at MVP volume. Revisit if feed query latency or RU cost becomes noticeable. Options: `/status` (hot/cold partition), composite key, or change feed pattern.
 
 ### ⚠️ Known Issues (from POC #5)
@@ -73,7 +73,7 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 ### ⚠️ Known Issues (from POC #9-#10)
 - **Text-only scoring underestimates Delivery (POC #9):** Spurgeon's Delivery scored 75-85 on text alone — he was historically one of the most dynamic speakers ever. Without Parselmouth audio data, Delivery and Emotional Range are conservative estimates. **Decision:** Display a "text-only" badge on historical/text sermons and note that Delivery/Emotional Range are estimates without audio.
 - **"Time in the Word" was measuring the wrong thing (POC #10):** Old metric measured direct scripture quotation %. Spurgeon's "Immutability of God" scored 30/100 despite being 90% biblical theology. **Fixed:** Redefined to measure biblical content density (quoted + taught + applied + exposited). Spurgeon's score jumped 30 → 95. Biggest single improvement to scoring accuracy. All prompts updated.
-- **Sermon type misclassification still affects normalization (POC #10):** Scheer's expository sermon on 1 Peter 1:1-2 is still classified as topical (85%), inflating biblical scores by ~3 points via normalization bumps. The classifier fix from POC #8 (sample beginning + middle + end) improved but didn't fully solve this. **Open:** May need a confidence threshold — if classification confidence < 90%, skip normalization or use reduced adjustments.
+- **Sermon type misclassification still affects normalization (POC #10):** Scheer's expository sermon on 1 Peter 1:1-2 is still classified as topical (85%), inflating biblical scores by ~3 points via normalization bumps. The classifier fix from POC #8 (sample beginning + middle + end) improved but didn't fully solve this. **Decision: tiered confidence threshold for normalization.** < 80% confidence → no normalization (score as-is), 80-90% → half normalization bump, > 90% → full bump. Stored as `classificationConfidence` (float) and `normalizationApplied` (none/half/full) in the Cosmos DB document. Scheer's 85% would get half bump instead of full — reducing the ~3 point inflation to ~1.5.
 
 ### NOT in MVP
 - Video upload / transcoding

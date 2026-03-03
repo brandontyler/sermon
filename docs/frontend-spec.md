@@ -70,9 +70,13 @@ Behavior:
 - On click: POST to `/api/sermons` with multipart form data (file + optional title + optional pastor)
 - Show progress bar during upload (thin, blue-600, below button)
 - On success: redirect to `/sermons/{id}` (detail page shows processing state)
-- On error: show inline error message (red-500 text below button)
-  - File too large (>100MB): "File too large. Max 100MB. Try converting to MP3."
+- Client-side validation before upload (check `file.size` and `file.type` in JS):
+  - File too large (>100MB): "File too large. Max 100MB. Try converting to MP3." — never hits the server
   - Wrong format: "Unsupported format. Upload MP3, WAV, or M4A."
+  - Azure Functions consumption plan has a 100MB request limit — client-side check prevents a confusing server-side rejection
+- On upload error: show inline error message (red-500 text below button)
+  - Network failure: "Upload failed. Check your connection and try again."
+  - Server error: "Something went wrong. Try again."
 - "View All Sermons →" link stays visible in both states
 
 ---
@@ -288,7 +292,9 @@ Response:
 ]
 ```
 
-`compositePsr` is `null` when `status` is `"processing"`.
+`compositePsr` is `null` when `status` is `"processing"` or `"failed"`.
+
+`status` values: `"processing"`, `"complete"`, `"failed"`.
 
 ### `GET /api/sermons/{id}`
 Full sermon detail.
@@ -305,6 +311,8 @@ Response: the full Cosmos DB sermon document. Key fields the frontend reads:
   "status": "complete",
   "sermonType": "expository",
   "compositePsr": 82.7,
+  "error": null,
+  "failedAt": null,
   "summary": "Strong expository sermon with excellent biblical grounding...",
   "categories": {
     "biblicalAccuracy": { "score": 95, "weight": 25, "reasoning": "..." },
@@ -334,6 +342,11 @@ Response: the full Cosmos DB sermon document. Key fields the frontend reads:
 
 Segment types: `"scripture"`, `"teaching"`, `"application"`, `"anecdote"`, `"illustration"`, `"prayer"`, `"transition"`
 
+When `status` is `"failed"`:
+- `error`: human-readable error message (e.g., `"Transcription failed — audio may be corrupted or silent."`)
+- `failedAt`: ISO 8601 timestamp
+- `compositePsr`, `categories`, `transcript`, `strengths`, `improvements`: all `null`
+
 ---
 
 ## Processing State
@@ -351,7 +364,28 @@ Analyzing sermon...
 This usually takes 1-2 minutes.
 ```
 
-Poll `GET /api/sermons/{id}` every 5 seconds. When status flips to `"complete"`, render the full scorecard. No websockets needed for MVP.
+Poll `GET /api/sermons/{id}` every 5 seconds. When status flips to `"complete"`, render the full scorecard. When status flips to `"failed"`, show the failed state. No websockets needed for MVP.
+
+---
+
+## Failed State
+
+When `status` is `"failed"`, the detail page shows an error view instead of the scorecard:
+
+```
+Something went wrong analyzing this sermon.
+
+Error: Transcription failed — audio may be corrupted or silent.
+
+[ Try Again ]    [ Back to sermons ]
+```
+
+- "Try Again" re-POSTs the original file (or links back to upload page if file isn't cached)
+- "Back to sermons" links to `/sermons`
+- Error message comes from the `error` field in the API response
+- Display the `error` value as-is — the backend provides human-readable messages
+
+On the feed page (`/sermons`), failed sermons show a red "Failed" badge in the PSR column instead of a score or spinner.
 
 ---
 

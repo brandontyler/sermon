@@ -1,6 +1,33 @@
+# IDE / tools
 .kiro/
-poc/samples/
+
+# Python
 .venv/
 __pycache__/
+*.pyc
+.coverage
+.pytest_cache/
+
+# Azure Functions
+local.settings.json
+api/.python_packages/
+
+# Node / Next.js (also in web/.gitignore)
+node_modules/
+.next/
+out/
+.swc/
+
+# Secrets / env
 .env
-poc/*_result.json
+
+# POC data (large audio samples + generated results)
+poc/samples/
+poc/*.json
+
+# Bicep compiled ARM template
+infra/main.json
+
+# Misc
+gpt41_deploy.log
+retry_gpt41_deploy.sh

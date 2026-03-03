@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.git/
+.github/
+poc/
+docs/
+*.md
+.env
+.env.example
+local.settings.json
+.kiro/
+.beads/
