@@ -18,14 +18,24 @@ export default function SermonsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
 
   useEffect(() => {
-    fetch(apiUrl("/api/sermons"))
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server error (${r.status})`);
-        return r.json();
-      })
-      .then(setSermons)
-      .catch(() => setError("Failed to load sermons. Try refreshing."))
-      .finally(() => setLoading(false));
+    let active = true;
+    async function load(retries = 3) {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const r = await fetch(apiUrl("/api/sermons"));
+          if (!active) return;
+          if (!r.ok) throw new Error(`Server error (${r.status})`);
+          setSermons(await r.json());
+          setLoading(false);
+          return;
+        } catch {
+          if (i < retries - 1) await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+        }
+      }
+      if (active) { setError("Failed to load sermons. Try refreshing."); setLoading(false); }
+    }
+    load();
+    return () => { active = false; };
   }, []);
 
   function toggleSort(key: SortKey) {

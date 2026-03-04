@@ -17,25 +17,41 @@ import TranscriptViewer from "@/components/TranscriptViewer";
 
 export default function SermonDetailClient() {
   const params = useParams<{ id: string }>();
-  // useParams may return the pre-rendered "placeholder" value on static export;
-  // fall back to the actual URL segment which is always correct.
-  const id = params.id && params.id !== "placeholder"
-    ? params.id
-    : typeof window !== "undefined" ? window.location.pathname.split("/").pop() : params.id;
+  // Static export bakes "placeholder" into RSC payload. Always read from URL.
+  const [id, setId] = useState<string | null>(null);
   const [sermon, setSermon] = useState<SermonDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Resolve ID from URL on mount (avoids useParams "placeholder" race)
   useEffect(() => {
-    if (!id || id === "placeholder") return;
+    const seg = window.location.pathname.split("/").pop() || null;
+    setId(seg && seg !== "placeholder" ? seg : params.id !== "placeholder" ? params.id : null);
+  }, [params.id]);
+
+  useEffect(() => {
+    if (!id) return;
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 120; // 120 × 5s = 10 min
+    let pollAttempts = 0;
+    const MAX_POLL = 120;
+    const MAX_RETRIES = 3; // retry on network errors (cold start)
+
+    async function fetchWithRetry(): Promise<Response> {
+      for (let i = 0; i < MAX_RETRIES; i++) {
+        try {
+          return await fetch(apiUrl(`/api/sermons/${id}`));
+        } catch {
+          if (i === MAX_RETRIES - 1) throw new Error("Network error");
+          await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+        }
+      }
+      throw new Error("Network error");
+    }
 
     async function poll() {
       try {
-        const res = await fetch(apiUrl(`/api/sermons/${id}`));
+        const res = await fetchWithRetry();
         if (!active) return;
         if (!res.ok) {
           setError(res.status === 404 ? "Sermon not found." : `Server error (${res.status}). Try refreshing.`);
@@ -47,8 +63,8 @@ export default function SermonDetailClient() {
         setSermon(data);
         setLoading(false);
         if (data.status === "processing") {
-          attempts++;
-          if (attempts >= MAX_ATTEMPTS) {
+          pollAttempts++;
+          if (pollAttempts >= MAX_POLL) {
             setError("Analysis is taking longer than expected. Try refreshing in a few minutes.");
             return;
           }
