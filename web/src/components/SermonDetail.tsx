@@ -151,20 +151,34 @@ export default function SermonDetailClient() {
           </div>
 
           {(sermon.strengths || sermon.improvements) && (
-            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {sermon.strengths && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-2">✓ Strengths</h3>
-                  <ul className="space-y-1">
-                    {sermon.strengths.map((s, i) => <li key={i} className="text-sm text-gray-600">• {s}</li>)}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-green-500">✓</span> Strengths
+                  </h3>
+                  <ul className="space-y-2">
+                    {sermon.strengths.map((s, i) => (
+                      <li key={i} className="text-sm text-gray-600 flex gap-2">
+                        <span className="text-green-400 mt-0.5 shrink-0">•</span>
+                        <span>{s}</span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
               {sermon.improvements && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-2">△ Areas to Improve</h3>
-                  <ul className="space-y-1">
-                    {sermon.improvements.map((s, i) => <li key={i} className="text-sm text-gray-600">• {s}</li>)}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-yellow-500">△</span> Areas to Improve
+                  </h3>
+                  <ul className="space-y-2">
+                    {sermon.improvements.map((s, i) => (
+                      <li key={i} className="text-sm text-gray-600 flex gap-2">
+                        <span className="text-yellow-400 mt-0.5 shrink-0">•</span>
+                        <span>{s}</span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
