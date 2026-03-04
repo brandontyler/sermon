@@ -5,6 +5,12 @@
       "allowedRoles": ["anonymous"]
     },
     {
+      "route": "/_next/static/*",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
       "route": "/sermons/*.txt",
       "rewrite": "/sermons/placeholder.txt"
     },
@@ -16,5 +22,8 @@
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/api/*", "/_next/*", "/favicon.ico"]
+  },
+  "globalHeaders": {
+    "cache-control": "no-cache"
   }
 }
