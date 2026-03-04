@@ -486,8 +486,9 @@ def update_sermon(input_data):
     try:
         kwargs = {}
         if etag:
+            from azure.core import MatchConditions
             kwargs["etag"] = etag
-            kwargs["match_condition"] = "IfMatch"
+            kwargs["match_condition"] = MatchConditions.IfNotModified
         container.upsert_item(doc, **kwargs)
     except Exception as e:
         if "PreconditionFailed" in type(e).__name__ or "412" in str(e):
