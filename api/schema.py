@@ -109,14 +109,19 @@ def normalize_scores(raw_scores, sermon_type, confidence):
 
 def build_summary_prompt(categories, sermon_type):
     """Build prompt to generate summary + strengths + improvements."""
-    lines = [f"- {k}: {v['score']}/100" for k, v in categories.items()]
-    return f"""Given these sermon scores (type: {sermon_type}):
+    lines = []
+    for k, v in categories.items():
+        line = f"- {k}: {v['score']}/100"
+        if v.get("reasoning"):
+            line += f" — {v['reasoning']}"
+        lines.append(line)
+    return f"""Given these sermon scores and reasoning (type: {sermon_type}):
 {chr(10).join(lines)}
 
 Return JSON:
-- "summary": one sentence overall assessment (max 30 words)
-- "strengths": array of exactly 3 short strength phrases
-- "improvements": array of exactly 2-3 short improvement phrases"""
+- "summary": one sentence overall assessment referencing specific sermon content (max 30 words)
+- "strengths": array of exactly 3 specific observations from this sermon (not generic category names)
+- "improvements": array of exactly 2-3 specific, actionable suggestions based on the reasoning above"""
 
 
 def fail_sermon_doc(error_message):

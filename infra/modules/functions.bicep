@@ -33,7 +33,6 @@ resource func 'Microsoft.Web/sites@2023-12-01' = {
         allowedOrigins: [
           'https://${swaDefaultHostname}'
           'https://howwas.church'
-          'http://localhost:3000'
         ]
       }
       appSettings: [

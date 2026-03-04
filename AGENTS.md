@@ -70,3 +70,24 @@ POC scripts live in `poc/`. Sample sermons in `poc/samples/` (Piper sermons, MP3
 | `poc/scripture_analyzer.py` | Scripture detection + verification |
 | `poc/audio_analysis_poc.py` | Parselmouth audio metrics extraction |
 | `poc/sermon_comparison.py` | Cross-sermon comparison (POC #4) |
+
+## E2E Regression Tests
+
+Browser-based tests using dev-browser (Playwright). Run after every build+deploy to verify MVP functionality.
+
+**18 tests covering:** home page, sermons list, sorting (PSR + date), type filtering, sermon detail (score gauge, 8 category cards, reasoning toggle, radar chart, strengths/improvements, transcript with segments), back navigation, direct URL routing (regression for sermon-2lz), and console error monitoring.
+
+### Running
+
+```bash
+# Copy test to dev-browser scripts dir (required for @/ import alias)
+cp tests/e2e-regression.ts ~/code/work/dev-browser/skills/dev-browser/scripts/psr-regression.ts
+
+# Run (requires dev-browser server via ~/bin/spinup)
+cd ~/code/work/dev-browser/skills/dev-browser && npx tsx scripts/psr-regression.ts
+```
+
+- Tolerates Azure Functions cold starts (5s waits on API-dependent pages)
+- Screenshots saved to `dev-browser/skills/dev-browser/tmp/reg-*.png`
+- Set `SCREENSHOTS=0` to skip screenshots
+- Exit code 1 on any failure

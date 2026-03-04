@@ -220,6 +220,12 @@ class TestBuildSummaryPrompt:
         prompt = build_summary_prompt(cats, "expository")
         assert "95/100" in prompt
 
+    def test_contains_reasoning(self):
+        cats = {k: {"score": 80, "weight": w, "reasoning": ""} for k, w in CATEGORY_WEIGHTS.items()}
+        cats["biblicalAccuracy"]["reasoning"] = "All cited passages are accurately quoted"
+        prompt = build_summary_prompt(cats, "expository")
+        assert "All cited passages are accurately quoted" in prompt
+
 
 # ── fail_sermon_doc ──
 
