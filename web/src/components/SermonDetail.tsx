@@ -16,13 +16,18 @@ import RadarView from "@/components/RadarView";
 import TranscriptViewer from "@/components/TranscriptViewer";
 
 export default function SermonDetailClient() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  // useParams may return the pre-rendered "placeholder" value on static export;
+  // fall back to the actual URL segment which is always correct.
+  const id = params.id && params.id !== "placeholder"
+    ? params.id
+    : typeof window !== "undefined" ? window.location.pathname.split("/").pop() : params.id;
   const [sermon, setSermon] = useState<SermonDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || id === "placeholder") return;
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;
     let attempts = 0;
