@@ -461,9 +461,12 @@ def generate_summary(input_data):
 # ─────────────────────────────────────────────
 
 def update_sermon(input_data):
-    """Patch a sermon document in Cosmos DB.
+    """Patch a sermon document in Cosmos DB with etag check.
 
     Input: {"sermonId": str, "updates": dict}
+
+    Uses etag to prevent stale writes if orchestrator replays cause
+    duplicate update_sermon calls. If etag mismatch, re-reads and retries once.
     """
     container = _cosmos_client()
     sermon_id = input_data["sermonId"]
@@ -473,10 +476,27 @@ def update_sermon(input_data):
         doc = container.read_item(sermon_id, partition_key=sermon_id)
     except Exception as e:
         if "NotFound" in type(e).__name__ or "CosmosResourceNotFoundError" in type(e).__name__:
-            log.error(f"Sermon {sermon_id} not found in Cosmos — cannot update")
+            log.error(f"[update_sermon] {sermon_id}: not found in Cosmos")
             return {"ok": False, "error": "not_found"}
         raise
 
+    etag = doc.get("_etag")
     doc.update(updates)
-    container.upsert_item(doc)
+
+    try:
+        kwargs = {}
+        if etag:
+            kwargs["etag"] = etag
+            kwargs["match_condition"] = "IfMatch"
+        container.upsert_item(doc, **kwargs)
+    except Exception as e:
+        if "PreconditionFailed" in type(e).__name__ or "412" in str(e):
+            # Etag mismatch — re-read and retry once (orchestrator replay scenario)
+            log.warning(f"[update_sermon] {sermon_id}: etag mismatch, re-reading and retrying")
+            doc = container.read_item(sermon_id, partition_key=sermon_id)
+            doc.update(updates)
+            container.upsert_item(doc)
+        else:
+            raise
+
     return {"ok": True}

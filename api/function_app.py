@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 import uuid
 
 import azure.functions as func
@@ -39,7 +40,7 @@ MAX_SIZE = 100 * 1024 * 1024  # 100MB
 @app.route(route="sermons", methods=["POST"])
 @app.durable_client_input(client_name="starter")
 @app.function_name("upload_sermon")
-async def upload_sermon(req: func.HttpRequest, starter: str) -> func.HttpResponse:
+async def upload_sermon(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
     """POST /api/sermons — Upload audio and start processing."""
     import os
     from azure.cosmos import CosmosClient
@@ -65,27 +66,44 @@ async def upload_sermon(req: func.HttpRequest, starter: str) -> func.HttpRespons
     blob_name = f"{sermon_id}/{filename}"
 
     # Store audio in Blob Storage
-    blob = BlobClient.from_connection_string(
-        os.environ["STORAGE_CONNECTION_STRING"], "sermon-audio", blob_name
-    )
-    blob.upload_blob(audio_bytes, content_type=content_type)
+    try:
+        blob = BlobClient.from_connection_string(
+            os.environ["STORAGE_CONNECTION_STRING"], "sermon-audio", blob_name
+        )
+        blob.upload_blob(audio_bytes, content_type=content_type)
+    except Exception as e:
+        log.error(f"[upload] Blob upload failed for {sermon_id}: {e}", exc_info=True)
+        return _json_response({"error": "Failed to store audio file. Please retry."}, 500)
 
     # Create Cosmos DB record
     doc = new_sermon_doc(sermon_id, filename, title, pastor)
     doc["blobUrl"] = blob_name
-    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
-    container = cosmos.get_database_client("psr").get_container_client("sermons")
-    container.create_item(doc)
+    try:
+        cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+        container = cosmos.get_database_client("psr").get_container_client("sermons")
+        container.create_item(doc)
+    except Exception as e:
+        log.error(f"[upload] Cosmos create failed for {sermon_id}: {e}", exc_info=True)
+        # Blob is orphaned — acceptable at MVP volume, lifecycle policy cleans up
+        return _json_response({"error": "Failed to create sermon record. Please retry."}, 500)
 
     # Start Durable Functions orchestrator
-    client = df.DurableOrchestrationClient(starter)
-    instance_id = await client.start_new("sermon_orchestrator", client_input={
-        "sermonId": sermon_id,
-        "blobUrl": blob_name,
-        "userTitle": title,
-        "userPastor": pastor,
-    })
-    log.info(f"Started orchestrator {instance_id} for sermon {sermon_id}")
+    try:
+        instance_id = await starter.start_new("sermon_orchestrator", client_input={
+            "sermonId": sermon_id,
+            "blobUrl": blob_name,
+            "userTitle": title,
+            "userPastor": pastor,
+        })
+        log.info(f"[upload] Started orchestrator {instance_id} for sermon {sermon_id}")
+    except Exception as e:
+        log.error(f"[upload] Orchestrator start failed for {sermon_id}: {e}", exc_info=True)
+        # Mark sermon as failed so it doesn't sit at "processing" forever
+        try:
+            container.upsert_item({**doc, **fail_sermon_doc("Orchestrator failed to start — please re-upload")})
+        except Exception:
+            pass
+        return _json_response({"error": "Processing failed to start. Please retry."}, 500)
 
     return _json_response({"id": sermon_id, "status": "processing"}, 202)
 
@@ -155,6 +173,13 @@ RETRY_LIGHT = df.RetryOptions(
 )
 
 
+def _set_status(context, sermon_id, step):
+    """Set custom status + log (only on non-replay to avoid noise)."""
+    context.set_custom_status({"step": step, "sermonId": sermon_id})
+    if not context.is_replaying:
+        log.info(f"[orchestrator] {sermon_id}: {step}")
+
+
 @bp.orchestration_trigger(context_name="context")
 def sermon_orchestrator(context: df.DurableOrchestrationContext):
     """Main pipeline: transcribe → score → store."""
@@ -164,6 +189,8 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
 
     try:
         # ── Wave 1: Transcribe + Parselmouth in parallel ──
+        _set_status(context, sermon_id, "transcribing")
+
         transcribe_task = context.call_activity_with_retry(
             "activity_transcribe", RETRY_TRANSCRIBE,
             {"blobUrl": blob_url, "sermonId": sermon_id},
@@ -174,20 +201,25 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
         )
 
         transcript_result = yield transcribe_task
+
         # Audio analysis: graceful degradation if it fails
         try:
             audio_metrics = yield audio_task
-        except Exception:
+        except Exception as e:
             audio_metrics = None
-            log.warning(f"Parselmouth failed for {sermon_id}, proceeding without audio metrics")
+            if not context.is_replaying:
+                log.warning(f"[orchestrator] {sermon_id}: Parselmouth failed ({e}), proceeding without audio")
 
         transcript_text = transcript_result["fullText"]
         wpm = transcript_result["wpm"]
-
-        # WPM sanity check
         wpm_flag = wpm < 80 or wpm > 200
 
+        if not context.is_replaying:
+            log.info(f"[orchestrator] {sermon_id}: transcribed {transcript_result['wordCount']} words, {wpm} WPM")
+
         # ── Wave 2: 5 LLM passes in parallel ──
+        _set_status(context, sermon_id, "scoring")
+
         pass1_task = context.call_activity_with_retry(
             "activity_pass1_biblical", RETRY_LLM,
             {"transcript": transcript_text},
@@ -196,17 +228,14 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "activity_pass2_structure", RETRY_LLM,
             {"transcript": transcript_text},
         )
-
-        delivery_input = {
-            "transcript": transcript_text,
-            "audioMetrics": audio_metrics or _default_audio_metrics(),
-            "wpm": wpm,
-        }
         pass3_task = context.call_activity_with_retry(
             "activity_pass3_delivery", RETRY_LLM,
-            delivery_input,
+            {
+                "transcript": transcript_text,
+                "audioMetrics": audio_metrics or _default_audio_metrics(),
+                "wpm": wpm,
+            },
         )
-
         classify_task = context.call_activity_with_retry(
             "activity_classify_sermon", RETRY_LLM,
             {
@@ -215,7 +244,6 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
                 "userPastor": input_data.get("userPastor"),
             },
         )
-
         segment_task = context.call_activity_with_retry(
             "activity_classify_segments", RETRY_LIGHT,
             {"segments": transcript_result["segments"]},
@@ -229,17 +257,23 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
 
         try:
             classified_segments = yield segment_task
-        except Exception:
+        except Exception as e:
             classified_segments = transcript_result["segments"]
-            log.warning(f"Segment classification failed for {sermon_id}, using defaults")
+            if not context.is_replaying:
+                log.warning(f"[orchestrator] {sermon_id}: segment classification failed ({e}), using defaults")
 
         # ── Normalize + composite ──
+        _set_status(context, sermon_id, "finalizing")
+
         raw_scores = {**pass1, **pass2, **pass3}
         sermon_type = classification["sermonType"]
         confidence = classification["confidence"]
 
         categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
         composite = compute_composite(categories)
+
+        if not context.is_replaying:
+            log.info(f"[orchestrator] {sermon_id}: PSR={composite}, type={sermon_type} ({confidence}%)")
 
         # ── Generate summary ──
         summary_result = yield context.call_activity_with_retry(
@@ -270,17 +304,29 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "wpmFlag": wpm_flag,
         }
 
-        yield context.call_activity("activity_update_sermon", RETRY_LIGHT, {
+        yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
             "sermonId": sermon_id,
             "updates": updates,
         })
 
+        _set_status(context, sermon_id, "complete")
+
     except Exception as e:
-        log.error(f"Pipeline failed for {sermon_id}: {e}")
-        yield context.call_activity("activity_update_sermon", RETRY_LIGHT, {
-            "sermonId": sermon_id,
-            "updates": fail_sermon_doc(str(e)),
-        })
+        if not context.is_replaying:
+            log.error(f"[orchestrator] {sermon_id}: pipeline failed: {e}", exc_info=True)
+        _set_status(context, sermon_id, "failed")
+        try:
+            yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
+                "sermonId": sermon_id,
+                "updates": fail_sermon_doc(str(e)),
+            })
+        except Exception as update_err:
+            # Last resort: log the double failure so it's findable in App Insights
+            if not context.is_replaying:
+                log.critical(
+                    f"[orchestrator] {sermon_id}: DOUBLE FAULT — pipeline failed ({e}) "
+                    f"AND error recording failed ({update_err}). Sermon stuck at 'processing'."
+                )
 
 
 def _default_audio_metrics():
@@ -293,7 +339,7 @@ def _default_audio_metrics():
 
 
 # ─────────────────────────────────────────────
-#  Activity Function Registrations
+#  Activity Function Registrations (with logging)
 # ─────────────────────────────────────────────
 
 from activities import (
@@ -303,41 +349,57 @@ from activities import (
 )
 
 
+def _run_activity(name, func, input_data):
+    """Wrap activity with entry/exit logging and timing."""
+    sermon_id = input_data.get("sermonId", input_data.get("blobUrl", "?"))
+    log.info(f"[{name}] started | {sermon_id}")
+    t0 = time.monotonic()
+    try:
+        result = func(input_data)
+        elapsed = round(time.monotonic() - t0, 1)
+        log.info(f"[{name}] completed in {elapsed}s | {sermon_id}")
+        return result
+    except Exception as e:
+        elapsed = round(time.monotonic() - t0, 1)
+        log.error(f"[{name}] failed after {elapsed}s | {sermon_id}: {e}", exc_info=True)
+        raise
+
+
 @bp.activity_trigger(input_name="input")
 def activity_transcribe(input: dict):
-    return transcribe(input)
+    return _run_activity("transcribe", transcribe, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_analyze_audio(input: dict):
-    return analyze_audio(input)
+    return _run_activity("analyze_audio", analyze_audio, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_pass1_biblical(input: dict):
-    return pass1_biblical(input)
+    return _run_activity("pass1_biblical", pass1_biblical, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_pass2_structure(input: dict):
-    return pass2_structure(input)
+    return _run_activity("pass2_structure", pass2_structure, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_pass3_delivery(input: dict):
-    return pass3_delivery(input)
+    return _run_activity("pass3_delivery", pass3_delivery, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_classify_sermon(input: dict):
-    return classify_sermon(input)
+    return _run_activity("classify_sermon", classify_sermon, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_classify_segments(input: dict):
-    return classify_segments(input)
+    return _run_activity("classify_segments", classify_segments, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_generate_summary(input: dict):
-    return generate_summary(input)
+    return _run_activity("generate_summary", generate_summary, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_update_sermon(input: dict):
-    return update_sermon(input)
+    return _run_activity("update_sermon", update_sermon, input)
 
 
 app.register_functions(bp)
