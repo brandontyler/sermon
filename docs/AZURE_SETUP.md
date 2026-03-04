@@ -145,17 +145,77 @@ These resources were created via `az` CLI during POC development. The Bicep temp
 | **Renewal** | TBD (check Porkbun for .church renewal rate) |
 | **Purpose** | Primary domain for PSR web app |
 
-### DNS Setup (TODO)
+### DNS Setup (Completed 2026-03-04)
 
-Once the Azure Static Web App is deployed, configure DNS:
+| Field | Value |
+|-------|-------|
+| **Static Web App** | `psr-web-dev` |
+| **Default Hostname** | `gentle-ground-0713e880f.1.azurestaticapps.net` |
+| **Porkbun API Access** | Enabled (keys in `.env`) |
 
-1. In Porkbun DNS settings, add a CNAME record pointing to the Static Web App's default hostname
-2. In Azure Portal, add `howwas.church` as a custom domain on the Static Web App (auto-provisions SSL)
-3. Optionally add `www.howwas.church` as a redirect
+#### Active DNS Records
 
-See [Azure docs: custom domain on Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain).
+| Type | Name | Target |
+|------|------|--------|
+| CNAME | `howwas.church` | `gentle-ground-0713e880f.1.azurestaticapps.net` |
+| CNAME | `www.howwas.church` | `gentle-ground-0713e880f.1.azurestaticapps.net` |
+| NS (x4) | `howwas.church` | Porkbun nameservers (do not modify) |
+
+Both domains have Azure-managed SSL certificates (auto-provisioned, auto-renewed).
+
+#### How It Was Set Up
+
+1. **Porkbun API access** — enabled in Porkbun dashboard under domain settings. Required for programmatic DNS changes.
+2. **Removed default records** — deleted the ALIAS and wildcard CNAME that pointed to `pixie.porkbun.com` (Porkbun parking page).
+3. **Added CNAMEs** — root and `www` both point to the SWA default hostname via Porkbun API.
+4. **Azure custom domain registration:**
+   - `www.howwas.church` — standard CNAME validation (automatic).
+   - `howwas.church` (apex) — required `--validation-method dns-txt-token`. Azure generates a token, you add it as a TXT record, Azure validates, then you delete the TXT record.
+5. **SSL** — Azure auto-provisions and auto-renews managed certificates for both domains.
+
+#### Gotchas
+
+- **Apex domains can't use CNAME validation** on Azure Static Web Apps. You must use `dns-txt-token` validation: get the token via `az staticwebapp hostname show`, add a TXT record, wait for Azure to validate (can take 5-10 min), then clean up the TXT record.
+- **Porkbun has Cloudflare proxy enabled by default** (`"cloudflare": "enabled"` in API responses). This doesn't break anything but means `dig CNAME howwas.church` returns empty — the CNAME is resolved behind Cloudflare's proxy as an A record. The actual CNAME is still there and working.
+- **Validation timing** — `www` validated in ~2 minutes. The apex domain took ~15 minutes. Be patient.
+
+#### Useful Commands
+
+```bash
+# Check domain status in Azure
+az staticwebapp hostname list --name psr-web-dev --resource-group rg-sermon-rating-dev -o table
+
+# Retrieve current DNS records via Porkbun API
+source .env && curl -s -X POST https://api.porkbun.com/api/json/v3/dns/retrieve/howwas.church \
+  -H "Content-Type: application/json" \
+  -d "{\"apikey\": \"$PORKBUN_API_KEY\", \"secretapikey\": \"$PORKBUN_SECRET_KEY\"}" | python3 -m json.tool
+
+# Add a DNS record (example: TXT record for domain verification)
+source .env && curl -s -X POST https://api.porkbun.com/api/json/v3/dns/create/howwas.church \
+  -H "Content-Type: application/json" \
+  -d "{\"apikey\": \"$PORKBUN_API_KEY\", \"secretapikey\": \"$PORKBUN_SECRET_KEY\", \
+       \"type\": \"TXT\", \"name\": \"\", \"content\": \"your-value\", \"ttl\": \"600\"}"
+
+# Delete a DNS record by ID
+source .env && curl -s -X POST https://api.porkbun.com/api/json/v3/dns/delete/howwas.church/RECORD_ID \
+  -H "Content-Type: application/json" \
+  -d "{\"apikey\": \"$PORKBUN_API_KEY\", \"secretapikey\": \"$PORKBUN_SECRET_KEY\"}"
+```
+
+#### Porkbun API Reference
+
+- **Base URL:** `https://api.porkbun.com/api/json/v3`
+- **Auth:** Every request body must include `apikey` and `secretapikey`
+- **All requests are POST** (even reads/deletes)
+- **Docs:** https://porkbun.com/api/json/v3/documentation
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/dns/retrieve/{domain}` | List all DNS records |
+| `/dns/create/{domain}` | Add a record (body: type, name, content, ttl) |
+| `/dns/delete/{domain}/{id}` | Delete a record by ID |
+| `/dns/edit/{domain}/{id}` | Update a record by ID |
 
 ## What's Next
 
 - Deploy full MVP infrastructure via Bicep templates (`infra/deploy.sh`)
-- Configure DNS for howwas.church → Azure Static Web App

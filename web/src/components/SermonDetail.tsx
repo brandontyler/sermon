@@ -15,6 +15,8 @@ import ScoreGauge from "@/components/ScoreGauge";
 import RadarView from "@/components/RadarView";
 import TranscriptViewer from "@/components/TranscriptViewer";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function SermonDetailClient() {
   const params = useParams<{ id: string }>();
   // Static export bakes "placeholder" into RSC payload. Always read from URL.
@@ -23,10 +25,14 @@ export default function SermonDetailClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Resolve ID from URL on mount (avoids useParams "placeholder" race)
+  // Resolve ID from URL on mount (avoids useParams "placeholder" race).
+  // UUID guard prevents bogus API calls when SWA routing serves this page
+  // for non-detail paths (e.g. /sermons → seg="sermons").
   useEffect(() => {
-    const seg = window.location.pathname.split("/").pop() || null;
-    setId(seg && seg !== "placeholder" ? seg : params.id !== "placeholder" ? params.id : null);
+    const seg = window.location.pathname.split("/").pop() || "";
+    const resolved = UUID_RE.test(seg) ? seg : UUID_RE.test(params.id) ? params.id : null;
+    setId(resolved);
+    if (!resolved) { setLoading(false); }
   }, [params.id]);
 
   useEffect(() => {

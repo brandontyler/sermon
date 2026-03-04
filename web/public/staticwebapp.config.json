@@ -11,6 +11,10 @@
       }
     },
     {
+      "route": "/sermons",
+      "rewrite": "/sermons.html"
+    },
+    {
       "route": "/sermons/*.txt",
       "rewrite": "/sermons/placeholder.txt"
     },
