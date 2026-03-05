@@ -15,6 +15,11 @@ from schema import (
     normalize_scores,
     build_summary_prompt,
     fail_sermon_doc,
+    LLMValidationError,
+    validate_llm_response,
+    validate_flat_response,
+    _strip_markdown_fences,
+    _clamp_score,
 )
 
 
@@ -243,3 +248,128 @@ class TestFailSermonDoc:
         assert doc["failedAt"].endswith("Z")
         # Should be parseable
         datetime.datetime.fromisoformat(doc["failedAt"].rstrip("Z"))
+
+
+# ── _strip_markdown_fences ──
+
+class TestStripMarkdownFences:
+    def test_plain_json(self):
+        assert _strip_markdown_fences('{"a": 1}') == '{"a": 1}'
+
+    def test_json_fences(self):
+        assert _strip_markdown_fences('```json\n{"a": 1}\n```') == '{"a": 1}'
+
+    def test_bare_fences(self):
+        assert _strip_markdown_fences('```\n{"a": 1}\n```') == '{"a": 1}'
+
+    def test_whitespace_around(self):
+        assert _strip_markdown_fences('  ```json\n{"a": 1}\n```  ') == '{"a": 1}'
+
+
+# ── _clamp_score ──
+
+class TestClampScore:
+    def test_normal(self):
+        assert _clamp_score(85) == 85
+
+    def test_float(self):
+        assert _clamp_score(85.7) == 85
+
+    def test_string_number(self):
+        assert _clamp_score("90") == 90
+
+    def test_over_100(self):
+        assert _clamp_score(150) == 100
+
+    def test_negative(self):
+        assert _clamp_score(-5) == 0
+
+    def test_zero(self):
+        assert _clamp_score(0) == 0
+
+    def test_non_numeric_raises(self):
+        with pytest.raises(LLMValidationError):
+            _clamp_score("not a number")
+
+    def test_none_raises(self):
+        with pytest.raises(LLMValidationError):
+            _clamp_score(None)
+
+
+# ── validate_llm_response ──
+
+class TestValidateLlmResponse:
+    def test_valid(self):
+        raw = '{"biblical_accuracy": {"score": 90, "reasoning": "Good"}}'
+        result = validate_llm_response(raw, {"biblical_accuracy": ["score", "reasoning"]})
+        assert result["biblical_accuracy"]["score"] == 90
+
+    def test_markdown_fences(self):
+        raw = '```json\n{"clarity": {"score": 80, "reasoning": "Clear"}}\n```'
+        result = validate_llm_response(raw, {"clarity": ["score", "reasoning"]})
+        assert result["clarity"]["score"] == 80
+
+    def test_score_clamped(self):
+        raw = '{"x": {"score": 120, "reasoning": ""}}'
+        result = validate_llm_response(raw, {"x": ["score", "reasoning"]})
+        assert result["x"]["score"] == 100
+
+    def test_reasoning_defaults_empty(self):
+        raw = '{"x": {"score": 50}}'
+        result = validate_llm_response(raw, {"x": ["score", "reasoning"]})
+        assert result["x"]["reasoning"] == ""
+
+    def test_missing_section_raises(self):
+        with pytest.raises(LLMValidationError, match="Missing required section"):
+            validate_llm_response('{"other": {}}', {"biblical_accuracy": ["score"]})
+
+    def test_invalid_json_raises(self):
+        with pytest.raises(LLMValidationError, match="Invalid JSON"):
+            validate_llm_response("not json", {"x": ["score"]})
+
+    def test_non_dict_raises(self):
+        with pytest.raises(LLMValidationError, match="Expected JSON object"):
+            validate_llm_response("[1,2,3]", {"x": ["score"]})
+
+    def test_section_not_object_raises(self):
+        with pytest.raises(LLMValidationError, match="not an object"):
+            validate_llm_response('{"x": "string"}', {"x": ["score"]})
+
+    def test_missing_required_key_raises(self):
+        with pytest.raises(LLMValidationError, match="Missing key"):
+            validate_llm_response('{"x": {"score": 80}}', {"x": ["score", "custom_field"]})
+
+    def test_preserves_extra_fields(self):
+        raw = '{"x": {"score": 80, "reasoning": "ok", "extra": "data"}}'
+        result = validate_llm_response(raw, {"x": ["score", "reasoning"]})
+        assert result["x"]["extra"] == "data"
+
+
+# ── validate_flat_response ──
+
+class TestValidateFlatResponse:
+    def test_valid(self):
+        result = validate_flat_response('{"summary": "Good"}', {"summary": "", "strengths": []})
+        assert result["summary"] == "Good"
+        assert result["strengths"] == []
+
+    def test_defaults_applied(self):
+        result = validate_flat_response('{}', {"sermon_type": "topical", "confidence": 50})
+        assert result["sermon_type"] == "topical"
+        assert result["confidence"] == 50
+
+    def test_existing_values_not_overwritten(self):
+        result = validate_flat_response('{"sermon_type": "expository"}', {"sermon_type": "topical"})
+        assert result["sermon_type"] == "expository"
+
+    def test_invalid_json_raises(self):
+        with pytest.raises(LLMValidationError):
+            validate_flat_response("broken", {})
+
+    def test_non_dict_raises(self):
+        with pytest.raises(LLMValidationError):
+            validate_flat_response('"just a string"', {})
+
+    def test_markdown_fences(self):
+        result = validate_flat_response('```json\n{"a": 1}\n```', {})
+        assert result["a"] == 1

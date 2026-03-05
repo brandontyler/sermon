@@ -93,34 +93,57 @@ class TestDefaultAudioMetrics:
 # The decorated upload_sermon is wrapped by durable_client_input which expects kwargs.
 # We test the core validation logic by importing and calling the inner function directly.
 
-DF_STARTER = json.dumps({
-    "taskHubName": "TestHub",
-    "creationUrls": {"createNewInstancePostUri": "http://localhost/api/orchestrators/{functionName}"},
-    "managementUrls": {
-        "id": "INSTANCEID",
-        "statusQueryGetUri": "http://localhost/api/instances/INSTANCEID",
-        "sendEventPostUri": "http://localhost/api/instances/INSTANCEID/raiseEvent/{eventName}",
-        "terminatePostUri": "http://localhost/api/instances/INSTANCEID/terminate",
-        "rewindPostUri": "http://localhost/api/instances/INSTANCEID/rewind",
-        "purgeHistoryDeleteUri": "http://localhost/api/instances/INSTANCEID",
-        "restartPostUri": "http://localhost/api/instances/INSTANCEID/restart",
-        "suspendPostUri": "http://localhost/api/instances/INSTANCEID/suspend",
-        "resumePostUri": "http://localhost/api/instances/INSTANCEID/resume",
-    },
-})
-
 
 class TestUploadValidation:
+    """Test upload_sermon HTTP trigger.
+
+    The @durable_client_input decorator wraps the function and constructs a
+    DurableOrchestrationClient from the starter JSON before our code runs.
+    We patch the constructor to return a mock client.
+    """
+
+    def _make_mock_starter_json(self):
+        """Return valid starter JSON that DurableOrchestrationClient can parse."""
+        return json.dumps({
+            "taskHubName": "TestHub",
+            "creationUrls": {"createNewInstancePostUri": "http://localhost/api/orchestrators/{functionName}"},
+            "managementUrls": {
+                "id": "INSTANCEID",
+                "statusQueryGetUri": "http://localhost/api/instances/INSTANCEID",
+                "sendEventPostUri": "http://localhost/api/instances/INSTANCEID/raiseEvent/{eventName}",
+                "terminatePostUri": "http://localhost/api/instances/INSTANCEID/terminate",
+                "rewindPostUri": "http://localhost/api/instances/INSTANCEID/rewind",
+                "purgeHistoryDeleteUri": "http://localhost/api/instances/INSTANCEID",
+                "restartPostUri": "http://localhost/api/instances/INSTANCEID/restart",
+                "suspendPostUri": "http://localhost/api/instances/INSTANCEID/suspend",
+                "resumePostUri": "http://localhost/api/instances/INSTANCEID/resume",
+            },
+        })
+
     async def _call_upload(self, req):
         from function_app import upload_sermon
+        from azure.cosmos import CosmosClient
         import azure.durable_functions as df
-        with patch.object(df.DurableOrchestrationClient, "start_new", new_callable=AsyncMock, return_value="inst-1"):
-            return await upload_sermon(req, starter=DF_STARTER)
+
+        req.headers = getattr(req, "headers", None) or {}
+        mock_container = MagicMock()
+        mock_container.query_items.return_value = [0]
+        mock_cosmos = MagicMock()
+        mock_cosmos.get_database_client.return_value.get_container_client.return_value = mock_container
+
+        mock_client = AsyncMock()
+        mock_client.start_new = AsyncMock(return_value="inst-1")
+
+        with patch.object(CosmosClient, "from_connection_string", return_value=mock_cosmos), \
+             patch.object(df.DurableOrchestrationClient, "__init__", return_value=None), \
+             patch.object(df.DurableOrchestrationClient, "start_new", new_callable=AsyncMock, return_value="inst-1"):
+            return await upload_sermon(req, starter=self._make_mock_starter_json())
 
     @pytest.mark.asyncio
     async def test_no_file(self):
         req = MagicMock(spec=func.HttpRequest)
         req.files = {}
+        req.headers = {}
         resp = await self._call_upload(req)
         assert resp.status_code == 400
         assert "No file uploaded" in resp.get_body().decode()
@@ -131,6 +154,7 @@ class TestUploadValidation:
         mock_file = MagicMock()
         mock_file.content_type = "video/mp4"
         req.files = {"file": mock_file}
+        req.headers = {}
         resp = await self._call_upload(req)
         assert resp.status_code == 400
         assert "Unsupported format" in resp.get_body().decode()
@@ -141,6 +165,7 @@ class TestUploadValidation:
         mock_file = MagicMock()
         mock_file.content_type = None
         req.files = {"file": mock_file}
+        req.headers = {}
         resp = await self._call_upload(req)
         assert resp.status_code == 400
 
@@ -151,6 +176,7 @@ class TestUploadValidation:
         mock_file.content_type = "audio/mpeg"
         mock_file.read.return_value = b"x" * (MAX_SIZE + 1)
         req.files = {"file": mock_file}
+        req.headers = {}
         resp = await self._call_upload(req)
         assert resp.status_code == 400
         assert "too large" in resp.get_body().decode()
@@ -164,9 +190,11 @@ class TestUploadValidation:
         mock_file.filename = "sermon.mp3"
         req.files = {"file": mock_file}
         req.form = {"title": "Test", "pastor": "Pastor"}
+        req.headers = {}
 
         mock_blob = MagicMock()
         mock_container = MagicMock()
+        mock_container.query_items.return_value = [0]
         mock_cosmos = MagicMock()
         mock_cosmos.get_database_client.return_value.get_container_client.return_value = mock_container
 
@@ -174,13 +202,12 @@ class TestUploadValidation:
         from azure.cosmos import CosmosClient
         import azure.durable_functions as df
 
-        mock_client = AsyncMock()
-        mock_client.start_new = AsyncMock(return_value="inst-1")
-
         with patch.object(BlobClient, "from_connection_string", return_value=mock_blob), \
              patch.object(CosmosClient, "from_connection_string", return_value=mock_cosmos), \
-             patch.object(df, "DurableOrchestrationClient", return_value=mock_client):
-            resp = await self._call_upload(req)
+             patch.object(df.DurableOrchestrationClient, "__init__", return_value=None), \
+             patch.object(df.DurableOrchestrationClient, "start_new", new_callable=AsyncMock, return_value="inst-1"):
+            from function_app import upload_sermon
+            resp = await upload_sermon(req, starter=self._make_mock_starter_json())
 
         assert resp.status_code == 202
         body = json.loads(resp.get_body())
@@ -198,20 +225,23 @@ class TestUploadValidation:
         mock_file.filename = None
         req.files = {"file": mock_file}
         req.form = {}
+        req.headers = {}
+
+        mock_container = MagicMock()
+        mock_container.query_items.return_value = [0]
 
         from azure.storage.blob import BlobClient
         from azure.cosmos import CosmosClient
         import azure.durable_functions as df
 
-        mock_client = AsyncMock()
-        mock_client.start_new = AsyncMock(return_value="inst-1")
-
         with patch.object(BlobClient, "from_connection_string", return_value=MagicMock()), \
              patch.object(CosmosClient, "from_connection_string", return_value=MagicMock(
                  get_database_client=MagicMock(return_value=MagicMock(
-                     get_container_client=MagicMock(return_value=MagicMock()))))), \
-             patch.object(df, "DurableOrchestrationClient", return_value=mock_client):
-            resp = await self._call_upload(req)
+                     get_container_client=MagicMock(return_value=mock_container))))), \
+             patch.object(df.DurableOrchestrationClient, "__init__", return_value=None), \
+             patch.object(df.DurableOrchestrationClient, "start_new", new_callable=AsyncMock, return_value="inst-1"):
+            from function_app import upload_sermon
+            resp = await upload_sermon(req, starter=self._make_mock_starter_json())
 
         assert resp.status_code == 202
 
