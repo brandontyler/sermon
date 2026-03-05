@@ -52,7 +52,12 @@ export default function UploadPage() {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve(JSON.parse(xhr.responseText));
           } else {
-            reject(new Error(xhr.responseText || "Something went wrong. Try again."));
+            try {
+              const body = JSON.parse(xhr.responseText);
+              reject(new Error(body.error || "Something went wrong. Try again."));
+            } catch {
+              reject(new Error("Something went wrong. Try again."));
+            }
           }
         };
         xhr.onerror = () => reject(new Error("Upload failed. Check your connection and try again."));

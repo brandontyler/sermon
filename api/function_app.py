@@ -43,8 +43,48 @@ MAX_SIZE = 100 * 1024 * 1024  # 100MB
 async def upload_sermon(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
     """POST /api/sermons — Upload audio and start processing."""
     import os
+    import datetime
     from azure.cosmos import CosmosClient
     from azure.storage.blob import BlobClient
+
+    # ── Guard 1: Content-Length pre-check (reject before buffering) ──
+    content_length = req.headers.get("Content-Length")
+    if content_length and int(content_length) > MAX_SIZE:
+        return _json_response({"error": "File too large. Max 100MB."}, 413)
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    # ── Guard 2: Concurrency gate (max 3 processing at once) ──
+    MAX_CONCURRENT = 3
+    try:
+        processing = list(container.query_items(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.status = 'processing'",
+            enable_cross_partition_query=True,
+        ))
+        if processing and processing[0] >= MAX_CONCURRENT:
+            log.warning(f"[upload] Rejected — {processing[0]} sermons already processing")
+            return _json_response({"error": "Server is busy processing other sermons. Please try again in a few minutes."}, 429)
+    except Exception as e:
+        log.warning(f"[upload] Concurrency check failed ({e}), allowing upload")
+
+    # ── Guard 3: Rate limit (5 uploads per IP per hour) ──
+    MAX_UPLOADS_PER_HOUR = 5
+    client_ip = req.headers.get("X-Forwarded-For", req.headers.get("REMOTE_ADDR", "unknown"))
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    try:
+        one_hour_ago = (datetime.datetime.utcnow() - datetime.timedelta(hours=1)).isoformat() + "Z"
+        recent = list(container.query_items(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.uploaderIp = @ip AND c.uploadedAt > @since",
+            parameters=[{"name": "@ip", "value": client_ip}, {"name": "@since", "value": one_hour_ago}],
+            enable_cross_partition_query=True,
+        ))
+        if recent and recent[0] >= MAX_UPLOADS_PER_HOUR:
+            log.warning(f"[upload] Rate limited IP {client_ip} ({recent[0]} uploads in last hour)")
+            return _json_response({"error": "Upload limit reached. Try again in an hour."}, 429)
+    except Exception as e:
+        log.warning(f"[upload] Rate limit check failed ({e}), allowing upload")
 
     # Validate file
     file = req.files.get("file")
@@ -75,16 +115,15 @@ async def upload_sermon(req: func.HttpRequest, starter: df.DurableOrchestrationC
         log.error(f"[upload] Blob upload failed for {sermon_id}: {e}", exc_info=True)
         return _json_response({"error": "Failed to store audio file. Please retry."}, 500)
 
-    # Create Cosmos DB record
+    # Create Cosmos DB record (includes IP + timestamp for rate limiting)
     doc = new_sermon_doc(sermon_id, filename, title, pastor)
     doc["blobUrl"] = blob_name
+    doc["uploaderIp"] = client_ip
+    doc["uploadedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
     try:
-        cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
-        container = cosmos.get_database_client("psr").get_container_client("sermons")
         container.create_item(doc)
     except Exception as e:
         log.error(f"[upload] Cosmos create failed for {sermon_id}: {e}", exc_info=True)
-        # Blob is orphaned — acceptable at MVP volume, lifecycle policy cleans up
         return _json_response({"error": "Failed to create sermon record. Please retry."}, 500)
 
     # Start Durable Functions orchestrator
@@ -140,8 +179,8 @@ async def get_sermon(req: func.HttpRequest) -> func.HttpResponse:
     except exceptions.CosmosResourceNotFoundError:
         return _json_response({"error": "Sermon not found"}, 404)
 
-    # Strip Cosmos metadata
-    for key in ("_rid", "_self", "_etag", "_attachments", "_ts"):
+    # Strip Cosmos metadata + internal fields
+    for key in ("_rid", "_self", "_etag", "_attachments", "_ts", "uploaderIp", "uploadedAt"):
         doc.pop(key, None)
 
     return _json_response(doc)
