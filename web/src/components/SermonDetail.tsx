@@ -185,10 +185,14 @@ export default function SermonDetailClient() {
             </div>
           )}
 
-          {sermon.transcript && sermon.transcript.segments.length > 0 && (
+          {sermon.transcript && (sermon.transcript.segments.length > 0 || sermon.transcript.fullText) && (
             <div className="mt-10">
               <h3 className="text-sm font-medium text-gray-900 mb-3">Transcript</h3>
-              <TranscriptViewer segments={sermon.transcript.segments} />
+              <TranscriptViewer
+                segments={sermon.transcript.segments.length > 0
+                  ? sermon.transcript.segments
+                  : [{ start: 0, end: 0, text: sermon.transcript.fullText, type: "teaching" }]}
+              />
             </div>
           )}
         </>
