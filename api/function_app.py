@@ -273,6 +273,7 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
                 "transcript": transcript_text,
                 "audioMetrics": audio_metrics or _default_audio_metrics(),
                 "wpm": wpm,
+                "audioAvailable": audio_metrics is not None,
             },
         )
         classify_task = context.call_activity_with_retry(

@@ -160,7 +160,7 @@ def analyze_audio(input_data):
 
 
 # ─────────────────────────────────────────────
-#  LLM Scoring Passes (proven prompts from POC #7/#10)
+#  LLM Scoring Passes (o4-mini / gpt-5-mini / gpt-5-nano)
 # ─────────────────────────────────────────────
 
 def pass1_biblical(input_data):
@@ -205,7 +205,7 @@ SERMON TRANSCRIPT:
 
 
 def pass2_structure(input_data):
-    """Pass 2: Structure & Content via GPT-4.1.
+    """Pass 2: Structure & Content via GPT-5-mini.
 
     Input: {"transcript": str}
     Output: {"clarity": {...}, "application": {...}, "engagement": {...}}
@@ -214,7 +214,7 @@ def pass2_structure(input_data):
     transcript = input_data["transcript"]
 
     resp = client.chat.completions.create(
-        model="gpt-41",
+        model="gpt-5-mini",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": """You are a sermon structure analyst. Evaluate against these rubrics and return JSON.
@@ -250,36 +250,46 @@ Return JSON:
 
 
 def pass3_delivery(input_data):
-    """Pass 3: Delivery via GPT-4.1-mini.
+    """Pass 3: Delivery via GPT-5-nano.
 
-    Input: {"transcript": str, "audioMetrics": dict, "wpm": float}
+    Input: {"transcript": str, "audioMetrics": dict, "wpm": float, "audioAvailable": bool}
     Output: {"delivery": {...}, "emotionalRange": {...}}
     """
     client = _openai_client()
     transcript = input_data["transcript"]
     audio = input_data["audioMetrics"]
     wpm = input_data["wpm"]
+    has_audio = input_data.get("audioAvailable", True)
 
-    resp = client.chat.completions.create(
-        model="gpt-41-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": """You are a sermon delivery analyst. You receive a transcript and pre-computed audio metrics. Use BOTH to score.
+    if has_audio:
+        system_msg = """You are a sermon delivery analyst. You receive a transcript and pre-computed audio metrics. Use BOTH to score.
 
-Audio metric guide: Pitch std >40Hz=expressive, <20Hz=monotone. Pitch range >300Hz=very dynamic. Intensity range >60dB=strong volume variation. Pauses >15/min=deliberate, <5/min=rushed. WPM 120-150=deliberate, 150-170=conversational, >170=fast."""},
-            {"role": "user", "content": f"""AUDIO METRICS:
+Audio metric guide: Pitch std >40Hz=expressive, <20Hz=monotone. Pitch range >300Hz=very dynamic. Intensity range >60dB=strong volume variation. Pauses >15/min=deliberate, <5/min=rushed. WPM 120-150=deliberate, 150-170=conversational, >170=fast."""
+        audio_section = f"""AUDIO METRICS:
 - Pitch: {audio['pitchMeanHz']}Hz mean, {audio['pitchStdHz']}Hz std, {audio['pitchRangeHz']}Hz range
 - Volume: {audio['intensityMeanDb']}dB mean, {audio['intensityRangeDb']}dB range
 - Pauses: {audio['pauseCount']} total ({audio['pausesPerMinute']}/min)
 - WPM: {wpm}
-- Duration: {audio['durationSeconds']}s
+- Duration: {audio['durationSeconds']}s"""
+        confidence_note = ""
+    else:
+        system_msg = """You are a sermon delivery analyst. Audio analysis was unavailable for this sermon — score based on transcript text cues ONLY (sentence structure, rhetorical devices, pacing indicators, punctuation patterns). Set confidence_level to "low" since audio data is missing. Score conservatively in the 50-75 range unless transcript strongly indicates otherwise."""
+        audio_section = f"AUDIO METRICS: Not available (audio analysis failed)\n- WPM: {wpm}"
+        confidence_note = "\nIMPORTANT: Note in reasoning that scores are text-only estimates without audio data."
+
+    resp = client.chat.completions.create(
+        model="gpt-5-nano",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": f"""{audio_section}
 
 TRANSCRIPT:
 {transcript}
 
 Return JSON:
 - "delivery": {{"score": 0-100, "filler_words": {{}}, "filler_total": int, "fillers_per_minute": float, "wpm": {wpm}, "pacing_assessment": "...", "confidence_level": "high/moderate/low", "reasoning": "..."}}
-- "emotional_range": {{"score": 0-100, "tone_shifts": int, "passion_moments": [descriptions], "sentiment_arc": "...", "reasoning": "..."}}"""},
+- "emotional_range": {{"score": 0-100, "tone_shifts": int, "passion_moments": [descriptions], "sentiment_arc": "...", "reasoning": "..."}}{confidence_note}"""},
         ],
     )
     from schema import CATEGORY_KEY_MAP, validate_llm_response
@@ -303,7 +313,7 @@ Return JSON:
 # ─────────────────────────────────────────────
 
 def classify_sermon(input_data):
-    """Classify sermon type + extract metadata via GPT-4.1-mini.
+    """Classify sermon type + extract metadata via GPT-5-nano.
 
     Input: {"transcript": str, "userTitle": str|None, "userPastor": str|None}
     Output: {"sermonType": str, "confidence": int, "title": str, "pastor": str|None, "mainPassage": str|None}
@@ -320,7 +330,7 @@ def classify_sermon(input_data):
     last = " ".join(words[max(0, n - 250):])
 
     resp = client.chat.completions.create(
-        model="gpt-41-mini",
+        model="gpt-5-nano",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "Classify the sermon and extract metadata. Return JSON only."},
@@ -390,7 +400,7 @@ def classify_segments(input_data):
         seg_lines = [f"[{i}] {seg['text'][:200]}" for i, seg in enumerate(batch)]
 
         resp = client.chat.completions.create(
-            model="gpt-41-mini",
+            model="gpt-5-nano",
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": """Classify each sermon transcript segment into exactly one type:
@@ -441,7 +451,7 @@ def generate_summary(input_data):
 
     prompt = build_summary_prompt(input_data["categories"], input_data["sermonType"])
     resp = client.chat.completions.create(
-        model="gpt-41-mini",
+        model="gpt-5-nano",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "You summarize sermon evaluation results. Return JSON only."},
