@@ -138,6 +138,10 @@ export default function SermonDetailClient() {
             {sermon.summary && <p className="text-sm text-gray-500 italic mt-4 text-center max-w-md">{sermon.summary}</p>}
           </div>
 
+          <div className="mt-10 flex justify-center">
+            <RadarView categories={sermon.categories} />
+          </div>
+
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {CATEGORY_ORDER.map((key) => {
               const cat = sermon.categories![key];
@@ -146,9 +150,7 @@ export default function SermonDetailClient() {
             })}
           </div>
 
-          <div className="mt-10 flex justify-center">
-            <RadarView categories={sermon.categories} />
-          </div>
+          {/* Radar chart moved above category cards for screenshot-friendly fold */}
 
           {(sermon.strengths || sermon.improvements) && (
             <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4">
