@@ -537,6 +537,7 @@ def rescore_sermon(input_data):
             "sermonType": sermon_type,
             "classificationConfidence": confidence,
             "normalizationApplied": norm_applied,
+            "rawScores": {k: raw_scores[k]["score"] for k in raw_scores},
             "strengths": summary.get("strengths"),
             "improvements": summary.get("improvements"),
             "summary": summary.get("summary"),

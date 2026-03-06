@@ -314,6 +314,9 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
         categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
         composite = compute_composite(categories)
 
+        # Preserve raw (pre-normalization) scores for future recalibration
+        raw_score_map = {k: raw_scores[k]["score"] for k in raw_scores}
+
         if not context.is_replaying:
             log.info(f"[orchestrator] {sermon_id}: PSR={composite}, type={sermon_type} ({confidence}%)")
 
@@ -342,6 +345,7 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             },
             "classificationConfidence": confidence,
             "normalizationApplied": norm_applied,
+            "rawScores": raw_score_map,
             "audioMetrics": audio_metrics,
             "wpmFlag": wpm_flag,
             "pipelineVersion": PIPELINE_VERSION,
