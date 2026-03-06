@@ -8,6 +8,15 @@ This is the single source of truth for the data contract between:
 Field names use camelCase to match the frontend-spec.md API contract.
 """
 
+# Pipeline version — bump when models or scoring prompts change
+PIPELINE_VERSION = "2026-03-06"
+SCORING_MODELS = {
+    "pass1_biblical": "o4-mini",
+    "pass2_structure": "gpt-5-mini",
+    "pass3_delivery": "gpt-5-nano",
+    "classification": "gpt-5-nano",
+}
+
 CATEGORY_WEIGHTS = {
     "biblicalAccuracy": 25,
     "timeInTheWord": 20,

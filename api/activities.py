@@ -467,6 +467,98 @@ def generate_summary(input_data):
 
 
 # ─────────────────────────────────────────────
+#  Rescore (admin-only, reuses existing transcript)
+# ─────────────────────────────────────────────
+
+def rescore_sermon(input_data):
+    """Re-score a sermon using current models on its existing transcript.
+
+    Skips transcription and Parselmouth — only re-runs LLM passes.
+    Preserves previous scores in a previousScores array for audit trail.
+
+    Input: {"sermonId": str}
+    Output: {"ok": True, "compositePsr": float}
+    """
+    from schema import normalize_scores, compute_composite, PIPELINE_VERSION, SCORING_MODELS
+    import datetime
+
+    container = _cosmos_client()
+    sermon_id = input_data["sermonId"]
+    doc = container.read_item(sermon_id, partition_key=sermon_id)
+
+    if doc.get("status") != "complete":
+        return {"ok": False, "error": "sermon not complete"}
+
+    transcript = doc["transcript"]["fullText"]
+    audio_metrics = doc.get("audioMetrics")
+    wpm = doc.get("categories", {}).get("delivery", {}).get("score", 0)
+    # Recover WPM from transcript word count and duration
+    duration = doc.get("duration", 0)
+    word_count = len(transcript.split())
+    wpm = round(word_count / (duration / 60), 1) if duration > 0 else 130
+
+    # Run 3 scoring passes + classification
+    pass1 = pass1_biblical({"transcript": transcript})
+    pass2 = pass2_structure({"transcript": transcript})
+    pass3 = pass3_delivery({
+        "transcript": transcript,
+        "audioMetrics": audio_metrics or _default_audio(),
+        "wpm": wpm,
+        "audioAvailable": audio_metrics is not None,
+    })
+    classification = classify_sermon({
+        "transcript": transcript,
+        "userTitle": doc.get("title"),
+        "userPastor": doc.get("pastor"),
+    })
+
+    sermon_type = classification["sermonType"]
+    confidence = classification["confidence"]
+    raw_scores = {**pass1, **pass2, **pass3}
+    categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
+    composite = compute_composite(categories)
+
+    summary = generate_summary({"categories": categories, "sermonType": sermon_type})
+
+    # Preserve old scores
+    previous = doc.get("previousScores", [])
+    previous.append({
+        "compositePsr": doc.get("compositePsr"),
+        "categories": doc.get("categories"),
+        "pipelineVersion": doc.get("pipelineVersion", "pre-tracking"),
+        "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
+    })
+
+    update_sermon({
+        "sermonId": sermon_id,
+        "updates": {
+            "compositePsr": composite,
+            "categories": categories,
+            "sermonType": sermon_type,
+            "classificationConfidence": confidence,
+            "normalizationApplied": norm_applied,
+            "strengths": summary.get("strengths"),
+            "improvements": summary.get("improvements"),
+            "summary": summary.get("summary"),
+            "pipelineVersion": PIPELINE_VERSION,
+            "scoringModels": SCORING_MODELS,
+            "previousScores": previous,
+            "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
+        },
+    })
+
+    return {"ok": True, "compositePsr": composite}
+
+
+def _default_audio():
+    return {
+        "pitchMeanHz": 0, "pitchStdHz": 0, "pitchRangeHz": 0,
+        "intensityMeanDb": 0, "intensityRangeDb": 0, "noiseFloorDb": 0,
+        "pauseCount": 0, "pausesPerMinute": 0, "durationSeconds": 0,
+    }
+
+
+# ─────────────────────────────────────────────
 #  Cosmos DB Update
 # ─────────────────────────────────────────────
 

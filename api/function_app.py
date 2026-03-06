@@ -14,6 +14,8 @@ from schema import (
     compute_composite,
     fail_sermon_doc,
     CATEGORY_WEIGHTS,
+    PIPELINE_VERSION,
+    SCORING_MODELS,
 )
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -342,6 +344,8 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "normalizationApplied": norm_applied,
             "audioMetrics": audio_metrics,
             "wpmFlag": wpm_flag,
+            "pipelineVersion": PIPELINE_VERSION,
+            "scoringModels": SCORING_MODELS,
         }
 
         yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
@@ -379,13 +383,73 @@ def _default_audio_metrics():
 
 
 # ─────────────────────────────────────────────
+#  Admin: Batch Rescore (function key auth)
+# ─────────────────────────────────────────────
+
+@app.route(route="admin/rescore", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@app.durable_client_input(client_name="starter")
+@app.function_name("admin_rescore")
+async def admin_rescore(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
+    """POST /api/admin/rescore — Re-score sermons with current models. Requires function key."""
+    body = req.get_json() if req.get_body() else {}
+    sermon_ids = body.get("sermonIds")
+    rescore_all = body.get("all", False)
+    older_than = body.get("olderThan")  # pipeline version date string
+
+    if not sermon_ids and not rescore_all:
+        return _json_response({"error": "Provide sermonIds array or {\"all\": true}"}, 400)
+
+    import os
+    from azure.cosmos import CosmosClient
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    if rescore_all:
+        if older_than:
+            query = "SELECT c.id FROM c WHERE c.status = 'complete' AND (NOT IS_DEFINED(c.pipelineVersion) OR c.pipelineVersion < @v)"
+            items = list(container.query_items(query, parameters=[{"name": "@v", "value": older_than}], enable_cross_partition_query=True))
+        else:
+            items = list(container.query_items("SELECT c.id FROM c WHERE c.status = 'complete'", enable_cross_partition_query=True))
+        sermon_ids = [item["id"] for item in items]
+
+    if not sermon_ids:
+        return _json_response({"message": "No sermons to rescore", "count": 0})
+
+    instance_id = await starter.start_new("rescore_orchestrator", client_input={"sermonIds": sermon_ids})
+    log.info(f"[admin_rescore] Started rescore orchestrator {instance_id} for {len(sermon_ids)} sermons")
+    return _json_response({"instanceId": instance_id, "count": len(sermon_ids), "sermonIds": sermon_ids}, 202)
+
+
+@bp.orchestration_trigger(context_name="context")
+def rescore_orchestrator(context: df.DurableOrchestrationContext):
+    """Re-score sermons using existing transcripts. Skips transcription + Parselmouth."""
+    input_data = context.get_input()
+    sermon_ids = input_data["sermonIds"]
+
+    results = []
+    for sermon_id in sermon_ids:
+        try:
+            result = yield context.call_activity_with_retry(
+                "activity_rescore_sermon", RETRY_LLM, {"sermonId": sermon_id}
+            )
+            results.append({"id": sermon_id, "ok": True, "newPsr": result.get("compositePsr")})
+        except Exception as e:
+            results.append({"id": sermon_id, "ok": False, "error": str(e)})
+            if not context.is_replaying:
+                log.error(f"[rescore] {sermon_id} failed: {e}")
+
+    context.set_custom_status({"done": True, "results": results})
+    return results
+
+
+# ─────────────────────────────────────────────
 #  Activity Function Registrations (with logging)
 # ─────────────────────────────────────────────
 
 from activities import (
     transcribe, analyze_audio, pass1_biblical, pass2_structure,
     pass3_delivery, classify_sermon, classify_segments,
-    generate_summary, update_sermon,
+    generate_summary, update_sermon, rescore_sermon,
 )
 
 
@@ -440,6 +504,10 @@ def activity_generate_summary(input: dict):
 @bp.activity_trigger(input_name="input")
 def activity_update_sermon(input: dict):
     return _run_activity("update_sermon", update_sermon, input)
+
+@bp.activity_trigger(input_name="input")
+def activity_rescore_sermon(input: dict):
+    return _run_activity("rescore_sermon", rescore_sermon, input)
 
 
 app.register_functions(bp)
