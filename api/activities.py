@@ -493,7 +493,7 @@ def rescore_sermon(input_data):
     audio_metrics = doc.get("audioMetrics")
     wpm = doc.get("categories", {}).get("delivery", {}).get("score", 0)
     # Recover WPM from transcript word count and duration
-    duration = doc.get("duration", 0)
+    duration = doc.get("duration") or 0
     word_count = len(transcript.split())
     wpm = round(word_count / (duration / 60), 1) if duration > 0 else 130
 

@@ -386,11 +386,16 @@ def _default_audio_metrics():
 #  Admin: Batch Rescore (function key auth)
 # ─────────────────────────────────────────────
 
-@app.route(route="admin/rescore", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="rescore", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @app.durable_client_input(client_name="starter")
 @app.function_name("admin_rescore")
 async def admin_rescore(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
-    """POST /api/admin/rescore — Re-score sermons with current models. Requires function key."""
+    """POST /api/admin/rescore — Re-score sermons with current models. Requires admin key."""
+    import os
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    provided = req.headers.get("x-admin-key", "") or req.params.get("key", "")
+    if not admin_key or provided != admin_key:
+        return _json_response({"error": "Unauthorized"}, 401)
     body = req.get_json() if req.get_body() else {}
     sermon_ids = body.get("sermonIds")
     rescore_all = body.get("all", False)
