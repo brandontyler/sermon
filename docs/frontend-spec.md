@@ -10,9 +10,10 @@ Tech: Next.js + TypeScript + Tailwind CSS + Recharts (radar chart). Deployed on 
 
 1. Lighthouse report, not a dashboard. The detail page should feel like opening a Lighthouse audit — big score, category breakdown, expandable reasoning.
 2. Typography is the design. Inter font, generous whitespace, no decorative elements. The numbers speak.
-3. Three colors for scores. Green (70+), yellow (50-69), red (below 50). That's it.
+3. Three colors for scores. Green (70+), yellow (50-69), red (below 50). Segment-type colors (transcript viewer) are separate and muted.
 4. Light theme only for MVP. Gray-50 background, white cards. Dark mode is Phase 1.
 5. Screenshot-friendly. The top fold of the detail page (score + summary + radar) should look good shared on Twitter/Discord without cropping.
+6. Processing feels purposeful. Show what's happening (transcribing, analyzing, scoring) not just a spinner. Failed states offer a clear next action.
 
 ---
 
