@@ -56,6 +56,48 @@ resource gpt41mini 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01'
   dependsOn: [gpt41]
 }
 
+resource gpt41nano 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: openai
+  name: 'gpt-41-nano'
+  sku: { name: 'GlobalStandard', capacity: 50 }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-4.1-nano'
+      version: modelVersions.gpt41nano
+    }
+  }
+  dependsOn: [gpt41mini]
+}
+
+resource gpt5mini 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: openai
+  name: 'gpt-5-mini'
+  sku: { name: 'GlobalStandard', capacity: 50 }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5-mini'
+      version: modelVersions.gpt5mini
+    }
+  }
+  dependsOn: [gpt41nano]
+}
+
+resource gpt5nano 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: openai
+  name: 'gpt-5-nano'
+  sku: { name: 'GlobalStandard', capacity: 50 }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5-nano'
+      version: modelVersions.gpt5nano
+    }
+  }
+  dependsOn: [gpt5mini]
+}
+
 output id string = openai.id
 output name string = openai.name
 output endpoint string = openai.properties.endpoint
