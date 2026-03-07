@@ -9,7 +9,7 @@ Field names use camelCase to match the frontend-spec.md API contract.
 """
 
 # Pipeline version — bump when models or scoring prompts change
-PIPELINE_VERSION = "2026-03-06c"  # tighter engagement + emotional range calibration (sermon-3pi)
+PIPELINE_VERSION = "2026-03-06d"  # biblical gravity cap on composite (sermon-3pi)
 SCORING_MODELS = {
     "pass1_biblical": "o4-mini",
     "pass2_structure": "gpt-5-mini",
@@ -77,14 +77,29 @@ def new_sermon_doc(sermon_id, filename, title=None, pastor=None):
 
 
 def compute_composite(categories):
-    """Compute weighted composite PSR from category scores."""
-    return round(
+    """Compute weighted composite PSR from category scores.
+
+    Applies biblical gravity: when the weighted biblical average (accuracy +
+    time in word + passage focus) is below 40, the composite is capped at
+    biblical_avg + 5. This prevents a biblically terrible sermon from scoring
+    above ~30 just because delivery/engagement are decent.
+    """
+    raw = round(
         sum(
             categories[k]["score"] * CATEGORY_WEIGHTS[k] / 100
             for k in CATEGORY_WEIGHTS
         ),
         1,
     )
+    biblical_keys = ["biblicalAccuracy", "timeInTheWord", "passageFocus"]
+    biblical_total_weight = sum(CATEGORY_WEIGHTS[k] for k in biblical_keys)
+    biblical_avg = sum(
+        categories[k]["score"] * CATEGORY_WEIGHTS[k] for k in biblical_keys
+    ) / biblical_total_weight
+
+    if biblical_avg < 40:
+        return round(min(raw, biblical_avg + 5), 1)
+    return raw
 
 
 def normalize_scores(raw_scores, sermon_type, confidence):
