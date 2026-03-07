@@ -118,7 +118,7 @@ export default function SermonsPage() {
                   <td className="p-3">
                     {s.status === "complete" && s.compositePsr != null ? (
                       <span className={`text-lg font-bold ${scoreColor(s.compositePsr)}`}>
-                        {Math.round(s.compositePsr)}
+                        {s.compositePsr.toFixed(1)}
                       </span>
                     ) : s.status === "failed" ? (
                       <span className="text-xs text-red-500 font-medium">Failed</span>

@@ -25,7 +25,7 @@ export default function ScoreGauge({ score }: { score: number }) {
   const color = score >= 70 ? "#22c55e" : score >= 50 ? "#eab308" : "#ef4444";
 
   return (
-    <div className="relative w-[200px] h-[200px]" role="img" aria-label={`PSR score: ${Math.round(score)} out of 100`}>
+    <div className="relative w-[200px] h-[200px]" role="img" aria-label={`PSR score: ${score.toFixed(1)} out of 100`}>
       <svg viewBox="0 0 200 200" className="w-full h-full">
         {/* Background arc */}
         <path d={arcPath(startAngle, endAngle)} fill="none" stroke="#e5e7eb" strokeWidth={stroke} strokeLinecap="round" />
@@ -35,7 +35,7 @@ export default function ScoreGauge({ score }: { score: number }) {
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-5xl font-bold" style={{ color }}>{Math.round(score)}</span>
+        <span className="text-5xl font-bold" style={{ color }}>{score.toFixed(1)}</span>
         <span className="text-sm text-gray-400">/100</span>
       </div>
     </div>

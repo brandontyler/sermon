@@ -182,6 +182,23 @@ def pass1_biblical(input_data):
   IMPORTANT: "Time in the Word" measures BIBLICAL CONTENT DENSITY — not just direct quotation. Score based on how much is grounded in biblical truth (quoted, taught, applied, exposited) vs secular content. 90-100=nearly all biblical, 70-89=majority, 50-69=mix, 30-49=more illustration, 0-29=minimal.
 - "passage_focus": {{"score": 0-100, "main_passage": "...", "time_on_main_passage_pct": %, "tangent_count": int, "reasoning": "..."}}
 
+SCORING SCALE — use the FULL 0-100 range, not just 40-90:
+  0-15:  Harmful — fabricated scripture, heretical claims, dangerous theology
+  15-30: Poor — out-of-context proof-texting, scripture used as decoration, no real exegesis
+  30-50: Below average — some biblical content but poorly handled or shallow
+  50-70: Average — decent biblical grounding with some gaps
+  70-85: Good — solid exegesis, faithful handling of text
+  85-95: Excellent — seminary-quality exposition, deep and accurate
+  95-100: Exceptional — historically significant (Spurgeon, Lloyd-Jones tier)
+
+CALIBRATION EXAMPLES (do NOT default to the 40-60 range for bad sermons):
+- Proof-texting Jeremiah 29:11 as a personal prosperity promise = Biblical Accuracy 15-25
+- Using Philippians 4:13 for mundane tasks (workouts, parking) = Biblical Accuracy 15-25
+- Announcing a passage then never teaching it = Passage Focus 5-15
+- Speaker cannot identify which book a verse is from = Biblical Accuracy penalty
+- Sermon is mostly anecdotes, pop culture, and personal stories with a few verses sprinkled in = Time in the Word 10-25
+- Deep verse-by-verse exposition of a single passage with Greek/Hebrew word study = 85-95 across all three categories
+
 Be rigorous. Check whether each scripture reference is used in its proper context.
 
 SERMON TRANSCRIPT:
@@ -221,7 +238,22 @@ def pass2_structure(input_data):
 
 CLARITY (10%): Logical flow, clear transitions, identifiable structure, accessible language.
 APPLICATION (10%): Practical takeaways, "so what?" moments, imperative language, specificity.
-ENGAGEMENT (10%): Rhetorical variety, audience connection, illustration quality, content pacing."""},
+ENGAGEMENT (10%): Rhetorical variety, audience connection, illustration quality, content pacing.
+
+SCORING SCALE — use the FULL 0-100 range, not just 40-90:
+  0-15:  Incoherent — no structure, no application, no audience awareness
+  15-30: Poor — rambling, loses place, vague platitudes instead of application
+  30-50: Below average — some structure but disorganized, generic takeaways
+  50-70: Average — identifiable points with some gaps in flow or application
+  70-85: Good — clear structure, specific application, effective illustrations
+  85-95: Excellent — masterful flow, compelling and specific, deeply engaging
+  95-100: Exceptional — historically significant sermon craft
+
+CALIBRATION EXAMPLES:
+- "Just be positive" / "trust the process" as application = Application 10-20
+- No identifiable structure, speaker loses place, random tangents = Clarity 15-25
+- Being funny/relatable does NOT rescue a sermon with no structure or substance — score Engagement on rhetorical craft and purposeful illustration, not just likability
+- A sermon that entertains but teaches nothing = Engagement 30-45 (entertainment ≠ engagement)"""},
             {"role": "user", "content": f"""Evaluate this sermon transcript:
 
 {transcript}
@@ -264,7 +296,18 @@ def pass3_delivery(input_data):
     if has_audio:
         system_msg = """You are a sermon delivery analyst. You receive a transcript and pre-computed audio metrics. Use BOTH to score.
 
-Audio metric guide: Pitch std >40Hz=expressive, <20Hz=monotone. Pitch range >300Hz=very dynamic. Intensity range >60dB=strong volume variation. Pauses >15/min=deliberate, <5/min=rushed. WPM 120-150=deliberate, 150-170=conversational, >170=fast."""
+Audio metric guide: Pitch std >40Hz=expressive, <20Hz=monotone. Pitch range >300Hz=very dynamic. Intensity range >60dB=strong volume variation. Pauses >15/min=deliberate, <5/min=rushed. WPM 120-150=deliberate, 150-170=conversational, >170=fast.
+
+SCORING SCALE — use the FULL 0-100 range, not just 40-90:
+  0-15:  Unlistenable — constant filler, monotone, no vocal control
+  15-30: Poor — excessive filler words, flat delivery, no intentional pacing
+  30-50: Below average — some expression but lacks confidence or vocal variety
+  50-70: Average — competent delivery with room for improvement
+  70-85: Good — confident, expressive, intentional pacing
+  85-95: Excellent — commanding presence, masterful vocal dynamics
+  95-100: Exceptional — Spurgeon/MLK-tier oratory
+
+CALIBRATION: A casual, conversational tone with frequent filler words and no rhetorical craft = Delivery 30-45, not 55-65."""
         audio_section = f"""AUDIO METRICS:
 - Pitch: {audio['pitchMeanHz']}Hz mean, {audio['pitchStdHz']}Hz std, {audio['pitchRangeHz']}Hz range
 - Volume: {audio['intensityMeanDb']}dB mean, {audio['intensityRangeDb']}dB range
@@ -273,7 +316,16 @@ Audio metric guide: Pitch std >40Hz=expressive, <20Hz=monotone. Pitch range >300
 - Duration: {audio['durationSeconds']}s"""
         confidence_note = ""
     else:
-        system_msg = """You are a sermon delivery analyst. Audio analysis was unavailable for this sermon — score based on transcript text cues ONLY (sentence structure, rhetorical devices, pacing indicators, punctuation patterns). Set confidence_level to "low" since audio data is missing. Score conservatively in the 50-75 range unless transcript strongly indicates otherwise."""
+        system_msg = """You are a sermon delivery analyst. Audio analysis was unavailable for this sermon — score based on transcript text cues ONLY (sentence structure, rhetorical devices, pacing indicators, punctuation patterns). Set confidence_level to "low" since audio data is missing. Score conservatively in the 50-75 range unless transcript strongly indicates otherwise.
+
+SCORING SCALE — use the FULL 0-100 range, not just 40-90:
+  0-15:  Unlistenable — constant filler, no rhetorical craft evident in text
+  15-30: Poor — excessive filler words, no intentional pacing or structure
+  30-50: Below average — some expression but lacks confidence or variety
+  50-70: Average — competent delivery cues with room for improvement
+  70-85: Good — confident, varied sentence structure, rhetorical devices
+  85-95: Excellent — commanding prose, masterful rhetorical craft
+  95-100: Exceptional — Spurgeon/MLK-tier oratory evident even in text"""
         audio_section = f"AUDIO METRICS: Not available (audio analysis failed)\n- WPM: {wpm}"
         confidence_note = "\nIMPORTANT: Note in reasoning that scores are text-only estimates without audio data."
 
