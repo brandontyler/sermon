@@ -9,7 +9,7 @@ Field names use camelCase to match the frontend-spec.md API contract.
 """
 
 # Pipeline version — bump when models or scoring prompts change
-PIPELINE_VERSION = "2026-03-06b"  # rubric anchoring + negative examples (sermon-3pi)
+PIPELINE_VERSION = "2026-03-06c"  # tighter engagement + emotional range calibration (sermon-3pi)
 SCORING_MODELS = {
     "pass1_biblical": "o4-mini",
     "pass2_structure": "gpt-5-mini",

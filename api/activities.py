@@ -253,7 +253,9 @@ CALIBRATION EXAMPLES:
 - "Just be positive" / "trust the process" as application = Application 10-20
 - No identifiable structure, speaker loses place, random tangents = Clarity 15-25
 - Being funny/relatable does NOT rescue a sermon with no structure or substance — score Engagement on rhetorical craft and purposeful illustration, not just likability
-- A sermon that entertains but teaches nothing = Engagement 30-45 (entertainment ≠ engagement)"""},
+- A sermon that entertains but teaches nothing = Engagement 25-40 (entertainment ≠ engagement)
+- Humor and casual banter without purposeful rhetorical structure = Engagement 20-35
+- Engagement measures SERMON CRAFT (rhetorical questions, callbacks, tension/resolution, purposeful illustration) — NOT personality or humor alone"""},
             {"role": "user", "content": f"""Evaluate this sermon transcript:
 
 {transcript}
@@ -307,7 +309,13 @@ SCORING SCALE — use the FULL 0-100 range, not just 40-90:
   85-95: Excellent — commanding presence, masterful vocal dynamics
   95-100: Exceptional — Spurgeon/MLK-tier oratory
 
-CALIBRATION: A casual, conversational tone with frequent filler words and no rhetorical craft = Delivery 30-45, not 55-65."""
+CALIBRATION:
+- A casual, conversational tone with frequent filler words and no rhetorical craft = Delivery 25-40, not 55-65
+- TTS/robotic audio with no natural inflection = Delivery 15-30
+- Emotional Range measures PURPOSEFUL tonal variation in service of the sermon's message — not just "the speaker has energy"
+- A speaker who is uniformly casual/jokey with no gravity, urgency, tenderness, or conviction = Emotional Range 20-35
+- Emotional Range requires CONTRAST: moving between gravity and joy, urgency and tenderness, conviction and compassion
+- A monotone or single-register delivery (even if energetic) = Emotional Range 15-30"""
         audio_section = f"""AUDIO METRICS:
 - Pitch: {audio['pitchMeanHz']}Hz mean, {audio['pitchStdHz']}Hz std, {audio['pitchRangeHz']}Hz range
 - Volume: {audio['intensityMeanDb']}dB mean, {audio['intensityRangeDb']}dB range
