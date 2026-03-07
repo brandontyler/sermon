@@ -1,7 +1,11 @@
-// Key Vault — RBAC mode, secrets populated by deploy.sh
+// Key Vault — RBAC mode, secrets populated via Bicep listKeys() (server-side, never transit local machine)
 param location string
 param environment string
 param tenantId string
+param speechName string
+param openaiName string
+param cosmosName string
+param storageName string
 
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: 'psr-kv-${environment}-001'
@@ -13,6 +17,55 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
   }
+}
+
+// --- Reference existing resources to extract keys server-side ---
+resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: speechName }
+resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: openaiName }
+resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-12-01-preview' existing = { name: cosmosName }
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageName }
+
+// --- Secrets (all resolved server-side via ARM — keys never leave Azure) ---
+resource speechKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'speech-key'
+  properties: { value: speech.listKeys().key1 }
+}
+
+resource speechEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'speech-endpoint'
+  properties: { value: speech.properties.endpoint }
+}
+
+resource openaiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'openai-key'
+  properties: { value: openai.listKeys().key1 }
+}
+
+resource openaiEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'openai-endpoint'
+  properties: { value: openai.properties.endpoint }
+}
+
+resource openaiApiVersion 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'openai-api-version'
+  properties: { value: '2025-01-01-preview' }
+}
+
+resource cosmosConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'cosmos-connection-string'
+  properties: { value: cosmos.listConnectionStrings().connectionStrings[0].connectionString }
+}
+
+resource storageConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'storage-connection-string'
+  properties: { value: 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}' }
 }
 
 output id string = kv.id

@@ -91,19 +91,6 @@ purge_soft_deletes() {
   echo "    ✓ Clean"
 }
 
-wait_for_keyvault() {
-  echo "    Waiting for Key Vault access..."
-  for i in 1 2 3 4 5 6; do
-    if az keyvault secret set --vault-name "$KV_NAME" --name deploy-test --value "ok" -o none 2>/dev/null; then
-      az keyvault secret delete --vault-name "$KV_NAME" --name deploy-test -o none 2>/dev/null || true
-      return 0
-    fi
-    [ "$i" -eq 6 ] && { echo "    ✗ Key Vault RBAC timed out after 90s. Re-run."; exit 1; }
-    echo "    Attempt $i/6..."
-    sleep 15
-  done
-}
-
 parse_output() {
   echo "$DEPLOY_OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['$1']['value'])"
 }
@@ -147,38 +134,7 @@ deploy_infra() {
   # Read actual SWA hostname from deployment output (auto-generated, can't predict)
   SWA_HOST=$(parse_output swaDefaultHostname)
 
-  echo "[·] Populating Key Vault secrets..."
-  # Grant deploying user access
-  local DEPLOYER_OID
-  DEPLOYER_OID=$(az ad signed-in-user show --query id -o tsv)
-  local KV_ID
-  KV_ID=$(az keyvault show --name "$KV_NAME" --query id -o tsv)
-  az role assignment create \
-    --role "Key Vault Secrets Officer" \
-    --assignee-object-id "$DEPLOYER_OID" \
-    --assignee-principal-type User \
-    --scope "$KV_ID" \
-    -o none 2>/dev/null || true
-
-  wait_for_keyvault
-
-  # Fetch and store secrets
-  local SPEECH_KEY SPEECH_ENDPOINT OPENAI_KEY OPENAI_ENDPOINT COSMOS_CONN STORAGE_CONN
-  SPEECH_KEY=$(az cognitiveservices account keys list -n "$SPEECH_NAME" -g "$RG" --query key1 -o tsv)
-  SPEECH_ENDPOINT=$(az cognitiveservices account show -n "$SPEECH_NAME" -g "$RG" --query properties.endpoint -o tsv)
-  OPENAI_KEY=$(az cognitiveservices account keys list -n "$OPENAI_NAME" -g "$RG" --query key1 -o tsv)
-  OPENAI_ENDPOINT=$(az cognitiveservices account show -n "$OPENAI_NAME" -g "$RG" --query properties.endpoint -o tsv)
-  COSMOS_CONN=$(az cosmosdb keys list -n "$COSMOS_NAME" -g "$RG" --type connection-strings --query "connectionStrings[0].connectionString" -o tsv)
-  STORAGE_CONN=$(az storage account show-connection-string -n "$STORAGE_NAME" -g "$RG" --query connectionString -o tsv)
-
-  az keyvault secret set --vault-name "$KV_NAME" --name speech-key --value "$SPEECH_KEY" -o none
-  az keyvault secret set --vault-name "$KV_NAME" --name speech-endpoint --value "$SPEECH_ENDPOINT" -o none
-  az keyvault secret set --vault-name "$KV_NAME" --name openai-key --value "$OPENAI_KEY" -o none
-  az keyvault secret set --vault-name "$KV_NAME" --name openai-endpoint --value "$OPENAI_ENDPOINT" -o none
-  az keyvault secret set --vault-name "$KV_NAME" --name openai-api-version --value "2025-01-01-preview" -o none
-  az keyvault secret set --vault-name "$KV_NAME" --name cosmos-connection-string --value "$COSMOS_CONN" -o none
-  az keyvault secret set --vault-name "$KV_NAME" --name storage-connection-string --value "$STORAGE_CONN" -o none
-  echo "    ✓ 7 secrets stored"
+  echo "    ✓ Secrets populated via Bicep (server-side)"
 
   # Link SWA backend to Function App (proxies /api/* — frontend just calls /api/sermons)
   echo "[·] Linking Static Web App backend..."
@@ -246,8 +202,8 @@ deploy_frontend() {
   echo "[·] Deploying to Static Web App..."
   local SWA_TOKEN
   SWA_TOKEN=$(az staticwebapp secrets list -n "$SWA_NAME" -g "$RG" --query "properties.apiKey" -o tsv)
-  # Next.js hybrid mode: SWA CLI auto-detects .next directory
-  (cd "${PROJECT_DIR}/web" && swa deploy .next --deployment-token "$SWA_TOKEN" --env production 2>&1 | tail -5)
+  # Next.js static export outputs to out/
+  (cd "${PROJECT_DIR}/web" && swa deploy out --deployment-token "$SWA_TOKEN" --env production 2>&1 | tail -5)
   echo "    ✓ Frontend deployed"
 }
 

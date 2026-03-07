@@ -42,13 +42,17 @@ module openai 'modules/openai.bicep' = {
   }
 }
 
-// --- Key Vault ---
+// --- Key Vault (after services it reads keys from) ---
 module keyvault 'modules/keyvault.bicep' = {
   name: 'keyvault'
   params: {
     location: location
     environment: environment
     tenantId: subscription().tenantId
+    speechName: speech.outputs.name
+    openaiName: openai.outputs.name
+    cosmosName: cosmos.outputs.name
+    storageName: storage.outputs.name
   }
 }
 
