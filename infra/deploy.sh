@@ -11,6 +11,8 @@
 #   ./infra/deploy.sh status       Show what's deployed
 
 set -euo pipefail
+trap 'echo "✗ Deploy failed at line $LINENO (exit $?)" >&2' ERR
+SECONDS=0
 
 ENV="dev"
 RG="rg-sermon-rating-dev"
@@ -165,8 +167,8 @@ deploy_backend() {
 
   # Check func CLI
   if ! command -v func >/dev/null 2>/dev/null; then
-    echo "    Installing Azure Functions Core Tools..."
-    npm install -g azure-functions-core-tools@4 --unsafe-perm true 2>/dev/null
+    echo "    ✗ func CLI not found. Install: sudo npm install -g azure-functions-core-tools@4"
+    exit 1
   fi
 
   echo "[·] Publishing Function App..."
@@ -185,8 +187,8 @@ deploy_frontend() {
 
   # Check swa CLI
   if ! command -v swa >/dev/null 2>/dev/null; then
-    echo "    Installing SWA CLI..."
-    npm install -g @azure/static-web-apps-cli 2>/dev/null
+    echo "    ✗ swa CLI not found. Install: sudo npm install -g @azure/static-web-apps-cli"
+    exit 1
   fi
 
   # Set API URL so the frontend knows where to send requests
@@ -232,7 +234,7 @@ do_teardown() {
   if az group exists --name "$RG" -o tsv 2>/dev/null | grep -qi true; then
     az group delete --name "$RG" --yes --no-wait -o none
     echo "    Waiting (~2-5 min)..."
-    az group wait --deleted --resource-group "$RG" 2>/dev/null || true
+    az group wait --deleted --resource-group "$RG" --timeout 600 2>/dev/null || true
     echo "    ✓ Resource group deleted"
   else
     echo "    Already gone"
@@ -252,7 +254,7 @@ do_teardown() {
 
   echo ""
   echo "═══════════════════════════════════════════════"
-  echo "  Teardown complete — no traces remain."
+  echo "  Teardown complete — no traces remain. (${SECONDS}s)"
   echo "  To redeploy: ./infra/deploy.sh"
   echo "═══════════════════════════════════════════════"
 }
@@ -308,7 +310,7 @@ case "$CMD" in
     deploy_frontend
     echo ""
     echo "═══════════════════════════════════════════════"
-    echo "  ✓ Everything deployed!"
+    echo "  ✓ Everything deployed! (${SECONDS}s)"
     echo "  https://howwas.church (once DNS is configured)"
     echo "═══════════════════════════════════════════════"
     echo ""
@@ -316,14 +318,17 @@ case "$CMD" in
   infra)
     deploy_infra
     echo ""
-    echo "  ✓ Infrastructure ready. Deploy code with: ./infra/deploy.sh code"
+    echo "  ⚠ Bicep redeploy resets Function App code — auto-restoring backend..."
+    deploy_backend
+    echo ""
+    echo "  ✓ Infrastructure ready + backend restored (${SECONDS}s)"
     echo ""
     ;;
   code)
     deploy_backend
     deploy_frontend
     echo ""
-    echo "  ✓ Code deployed!"
+    echo "  ✓ Code deployed! (${SECONDS}s)"
     echo ""
     ;;
   backend)
