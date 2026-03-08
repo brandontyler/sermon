@@ -75,7 +75,7 @@ POC scripts live in `poc/`. Sample sermons in `poc/samples/` (Piper sermons, MP3
 
 Browser-based tests using dev-browser (Playwright). Run after every build+deploy to verify MVP functionality.
 
-**18 tests covering:** home page, sermons list, sorting (PSR + date), type filtering, sermon detail (score gauge, 8 category cards, reasoning toggle, radar chart, strengths/improvements, transcript with segments), back navigation, direct URL routing (regression for sermon-2lz), and console error monitoring.
+**24 tests covering:** home page (welcome intro, audio + text dropzones), sermons list (sorting PSR + date, type filtering, source column, score colors), sermon detail (score gauge with color verification, 8 category cards, reasoning toggle, radar chart, strengths/improvements, transcript with segments), back navigation, direct URL routing (regression for sermon-2lz), and console error monitoring.
 
 ### Running
 
