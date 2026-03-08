@@ -11,11 +11,20 @@
     }
   },
   "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Host.Results": "Information",
+      "Function": "Information",
+      "Host.Aggregator": "Information",
+      "DurableTask.AzureStorage": "Warning",
+      "DurableTask.Core": "Information"
+    },
     "applicationInsights": {
       "samplingSettings": {
         "isEnabled": true,
-        "excludedTypes": "Request"
-      }
+        "excludedTypes": "Request;Exception;Dependency;Event"
+      },
+      "enableDependencyTracking": true
     }
   }
 }

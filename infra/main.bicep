@@ -70,6 +70,7 @@ module functions 'modules/functions.bicep' = {
     environment: environment
     storageName: storage.outputs.name
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    appInsightsInstrumentationKey: monitoring.outputs.appInsightsInstrumentationKey
     keyVaultUri: keyvault.outputs.uri
     swaDefaultHostname: swa.outputs.defaultHostname
   }

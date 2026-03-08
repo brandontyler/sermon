@@ -9,6 +9,7 @@ export interface SermonSummary {
   status: "processing" | "complete" | "failed";
   sermonType: string | null;
   compositePsr: number | null;
+  inputType?: "audio" | "text";
 }
 
 export interface CategoryScore {

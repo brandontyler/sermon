@@ -3,6 +3,7 @@ param location string
 param environment string
 param storageName string
 param appInsightsConnectionString string
+param appInsightsInstrumentationKey string
 param keyVaultUri string
 param swaDefaultHostname string
 
@@ -41,6 +42,7 @@ resource func 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+        { name: 'APPINSIGHTS_INSTRUMENTATIONKEY', value: appInsightsInstrumentationKey }
         { name: 'WEBSITE_RUN_FROM_PACKAGE', value: '1' }
         // All others via Key Vault references
         { name: 'SPEECH_KEY', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/speech-key/)' }

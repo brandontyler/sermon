@@ -116,7 +116,7 @@ export default function SermonDetailClient() {
             <p>◻ Evaluating structure</p>
             <p>◻ Scoring delivery</p>
           </div>
-          <p className="text-xs text-gray-400 mt-6">This usually takes 1-2 minutes.</p>
+          <p className="text-xs text-gray-400 mt-6">This usually takes about 5 minutes.</p>
         </div>
       )}
 

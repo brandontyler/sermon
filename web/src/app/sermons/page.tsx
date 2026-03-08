@@ -106,6 +106,7 @@ export default function SermonsPage() {
                 </th>
                 <th scope="col" className="p-3">Sermon</th>
                 <th scope="col" className="p-3 hidden sm:table-cell">Type</th>
+                <th scope="col" className="p-3 hidden sm:table-cell">Source</th>
                 <th scope="col" className="p-3 hidden sm:table-cell">Duration</th>
                 <th scope="col" role="columnheader" aria-sort={sortBy === "date" ? (sortAsc ? "ascending" : "descending") : "none"} tabIndex={0} className="p-3 cursor-pointer hover:text-gray-900" onClick={() => toggleSort("date")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSort("date"); } }}>
                   Date {sortBy === "date" ? (sortAsc ? "↑" : "↓") : ""}
@@ -136,6 +137,9 @@ export default function SermonsPage() {
                         {formatType(s.sermonType)}
                       </span>
                     )}
+                  </td>
+                  <td className="p-3 hidden sm:table-cell">
+                    <span className="text-xs text-gray-500">{s.inputType === "text" ? "📄 Text" : "🎙️ Audio"}</span>
                   </td>
                   <td className="p-3 text-gray-500 hidden sm:table-cell">{formatDuration(s.duration)}</td>
                   <td className="p-3 text-gray-500">{formatDate(s.date)}</td>

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import time
 import uuid
 
@@ -149,6 +150,177 @@ async def upload_sermon(req: func.HttpRequest, starter: df.DurableOrchestrationC
     return _json_response({"id": sermon_id, "status": "processing"}, 202)
 
 
+ALLOWED_TEXT_TYPES = {
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/html": ".html",
+    "text/csv": ".csv",
+    "text/rtf": ".rtf",
+    "text/xml": ".xml",
+    "application/rtf": ".rtf",
+    "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.oasis.opendocument.text": ".odt",
+}
+ALLOWED_TEXT_EXTENSIONS = {".txt", ".md", ".html", ".htm", ".csv", ".rtf", ".xml", ".pdf", ".doc", ".docx", ".odt"}
+MAX_TEXT_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def _extract_text(file_bytes, filename, content_type):
+    """Extract plain text from uploaded file. Returns str or raises ValueError."""
+    ext = os.path.splitext(filename)[1].lower() if filename else ""
+
+    # Plain text formats — decode directly
+    if ext in {".txt", ".md", ".csv", ".xml", ".html", ".htm"} or content_type in {"text/plain", "text/markdown", "text/csv", "text/xml", "text/html"}:
+        for enc in ("utf-8", "utf-8-sig", "latin-1"):
+            try:
+                return file_bytes.decode(enc)
+            except (UnicodeDecodeError, ValueError):
+                continue
+        raise ValueError("Could not decode text file")
+
+    # DOCX
+    if ext == ".docx" or content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        import zipfile, io, xml.etree.ElementTree as ET
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+            xml_content = z.read("word/document.xml")
+        root = ET.fromstring(xml_content)
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        return "\n".join(p.text for p in root.iter(f"{{{ns['w']}}}t") if p.text)
+
+    # PDF
+    if ext == ".pdf" or content_type == "application/pdf":
+        raise ValueError("PDF upload not yet supported — please copy/paste the text into a .txt file")
+
+    # DOC (legacy binary)
+    if ext == ".doc" or content_type == "application/msword":
+        raise ValueError(".doc format not supported — please save as .docx or .txt")
+
+    # RTF
+    if ext == ".rtf" or content_type in {"text/rtf", "application/rtf"}:
+        # Strip RTF control words for basic extraction
+        import re
+        text = file_bytes.decode("latin-1")
+        text = re.sub(r'\\[a-z]+\d*\s?', '', text)
+        text = re.sub(r'[{}]', '', text)
+        return text.strip()
+
+    # ODT
+    if ext == ".odt" or content_type == "application/vnd.oasis.opendocument.text":
+        import zipfile, io, xml.etree.ElementTree as ET
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+            xml_content = z.read("content.xml")
+        root = ET.fromstring(xml_content)
+        ns = {"text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0"}
+        return "\n".join("".join(p.itertext()) for p in root.iter(f"{{{ns['text']}}}p"))
+
+    raise ValueError(f"Unsupported file type: {ext or content_type}")
+
+
+@app.route(route="sermons/text", methods=["POST"])
+@app.durable_client_input(client_name="starter")
+@app.function_name("upload_text_sermon")
+async def upload_text_sermon(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
+    """POST /api/sermons/text — Upload text transcript and start processing (skip transcription + audio)."""
+    import os
+    import datetime
+    from azure.cosmos import CosmosClient
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    # ── Concurrency gate ──
+    MAX_CONCURRENT = 3
+    try:
+        processing = list(container.query_items(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.status = 'processing'",
+            enable_cross_partition_query=True,
+        ))
+        if processing and processing[0] >= MAX_CONCURRENT:
+            return _json_response({"error": "Server is busy processing other sermons. Please try again in a few minutes."}, 429)
+    except Exception:
+        pass
+
+    # ── Rate limit ──
+    MAX_UPLOADS_PER_HOUR = 5
+    client_ip = req.headers.get("X-Forwarded-For", req.headers.get("REMOTE_ADDR", "unknown"))
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    try:
+        one_hour_ago = (datetime.datetime.utcnow() - datetime.timedelta(hours=1)).isoformat() + "Z"
+        recent = list(container.query_items(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.uploaderIp = @ip AND c.uploadedAt > @since",
+            parameters=[{"name": "@ip", "value": client_ip}, {"name": "@since", "value": one_hour_ago}],
+            enable_cross_partition_query=True,
+        ))
+        if recent and recent[0] >= MAX_UPLOADS_PER_HOUR:
+            return _json_response({"error": "Upload limit reached. Try again in an hour."}, 429)
+    except Exception:
+        pass
+
+    # ── Validate file ──
+    file = req.files.get("file")
+    if not file:
+        return _json_response({"error": "No file uploaded"}, 400)
+
+    filename = file.filename or "sermon.txt"
+    ext = os.path.splitext(filename)[1].lower()
+    content_type = file.content_type or ""
+
+    if ext not in ALLOWED_TEXT_EXTENSIONS and content_type not in ALLOWED_TEXT_TYPES:
+        return _json_response({"error": f"Unsupported format. Upload TXT, DOCX, MD, RTF, ODT, HTML, or CSV."}, 400)
+
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_TEXT_SIZE:
+        return _json_response({"error": "File too large. Max 10MB for text files."}, 400)
+
+    # ── Extract text ──
+    try:
+        transcript_text = _extract_text(file_bytes, filename, content_type)
+    except ValueError as e:
+        return _json_response({"error": str(e)}, 400)
+
+    word_count = len(transcript_text.split())
+    if word_count < 50:
+        return _json_response({"error": "Transcript too short (under 50 words). Upload a complete sermon."}, 400)
+
+    title = req.form.get("title") or None
+    pastor = req.form.get("pastor") or None
+    sermon_id = str(uuid.uuid4())
+
+    # ── Create Cosmos DB record ──
+    doc = new_sermon_doc(sermon_id, filename, title, pastor)
+    doc["uploaderIp"] = client_ip
+    doc["uploadedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+    doc["inputType"] = "text"
+    try:
+        container.create_item(doc)
+    except Exception as e:
+        log.error(f"[upload_text] Cosmos create failed for {sermon_id}: {e}", exc_info=True)
+        return _json_response({"error": "Failed to create sermon record. Please retry."}, 500)
+
+    # ── Start text orchestrator ──
+    try:
+        instance_id = await starter.start_new("text_sermon_orchestrator", client_input={
+            "sermonId": sermon_id,
+            "transcript": transcript_text,
+            "wordCount": word_count,
+            "userTitle": title,
+            "userPastor": pastor,
+        })
+        log.info(f"[upload_text] Started text orchestrator {instance_id} for sermon {sermon_id}")
+    except Exception as e:
+        log.error(f"[upload_text] Orchestrator start failed for {sermon_id}: {e}", exc_info=True)
+        try:
+            container.upsert_item({**doc, **fail_sermon_doc("Orchestrator failed to start — please re-upload")})
+        except Exception:
+            pass
+        return _json_response({"error": "Processing failed to start. Please retry."}, 500)
+
+    return _json_response({"id": sermon_id, "status": "processing"}, 202)
+
+
 @app.route(route="sermons", methods=["GET"])
 @app.function_name("list_sermons")
 async def list_sermons(req: func.HttpRequest) -> func.HttpResponse:
@@ -159,7 +331,7 @@ async def list_sermons(req: func.HttpRequest) -> func.HttpResponse:
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
     container = cosmos.get_database_client("psr").get_container_client("sermons")
 
-    query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr FROM c ORDER BY c.date DESC"
+    query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr, c.inputType FROM c ORDER BY c.date DESC"
     items = list(container.query_items(query, enable_cross_partition_query=True))
 
     return _json_response(items)
@@ -384,6 +556,141 @@ def _default_audio_metrics():
         "intensityMeanDb": 0, "intensityRangeDb": 0, "noiseFloorDb": 0,
         "pauseCount": 0, "pausesPerMinute": 0, "durationSeconds": 0,
     }
+
+
+@bp.orchestration_trigger(context_name="context")
+def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
+    """Pipeline for text-only sermons: skip transcription + Parselmouth, go straight to scoring."""
+    input_data = context.get_input()
+    sermon_id = input_data["sermonId"]
+    transcript_text = input_data["transcript"]
+    word_count = input_data["wordCount"]
+
+    try:
+        # Estimate WPM assuming ~140 WPM average speaking rate
+        estimated_duration = word_count / 140 * 60  # seconds
+        wpm = 140.0
+
+        # ── Build segments from paragraphs ──
+        paragraphs = [p.strip() for p in transcript_text.split("\n") if p.strip()]
+        seg_duration = estimated_duration / max(len(paragraphs), 1)
+        segments = []
+        for i, para in enumerate(paragraphs):
+            segments.append({
+                "start": round(i * seg_duration, 2),
+                "end": round((i + 1) * seg_duration, 2),
+                "text": para,
+                "type": "teaching",
+            })
+
+        # ── LLM passes in parallel (no audio) ──
+        _set_status(context, sermon_id, "scoring")
+
+        pass1_task = context.call_activity_with_retry(
+            "activity_pass1_biblical", RETRY_LLM, {"transcript": transcript_text},
+        )
+        pass2_task = context.call_activity_with_retry(
+            "activity_pass2_structure", RETRY_LLM, {"transcript": transcript_text},
+        )
+        pass3_task = context.call_activity_with_retry(
+            "activity_pass3_delivery", RETRY_LLM,
+            {
+                "transcript": transcript_text,
+                "audioMetrics": _default_audio_metrics(),
+                "wpm": wpm,
+                "audioAvailable": False,
+            },
+        )
+        classify_task = context.call_activity_with_retry(
+            "activity_classify_sermon", RETRY_LLM,
+            {
+                "transcript": transcript_text,
+                "userTitle": input_data.get("userTitle"),
+                "userPastor": input_data.get("userPastor"),
+            },
+        )
+        segment_task = context.call_activity_with_retry(
+            "activity_classify_segments", RETRY_LIGHT, {"segments": segments},
+        )
+
+        pass1 = yield pass1_task
+        pass2 = yield pass2_task
+        pass3 = yield pass3_task
+        classification = yield classify_task
+
+        try:
+            classified_segments = yield segment_task
+        except Exception:
+            classified_segments = segments
+
+        # ── Normalize + composite ──
+        _set_status(context, sermon_id, "finalizing")
+
+        raw_scores = {**pass1, **pass2, **pass3}
+        sermon_type = classification["sermonType"]
+        confidence = classification["confidence"]
+
+        categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
+        composite = compute_composite(categories)
+        raw_score_map = {k: raw_scores[k]["score"] for k in raw_scores}
+
+        if not context.is_replaying:
+            log.info(f"[text_orchestrator] {sermon_id}: PSR={composite}, type={sermon_type} ({confidence}%)")
+
+        # ── Summary ──
+        summary_result = yield context.call_activity_with_retry(
+            "activity_generate_summary", RETRY_LIGHT,
+            {"categories": categories, "sermonType": sermon_type},
+        )
+
+        # ── Store results ──
+        updates = {
+            "status": "complete",
+            "title": classification["title"],
+            "pastor": classification["pastor"],
+            "duration": round(estimated_duration),
+            "sermonType": sermon_type,
+            "compositePsr": composite,
+            "summary": summary_result.get("summary"),
+            "categories": categories,
+            "strengths": summary_result.get("strengths"),
+            "improvements": summary_result.get("improvements"),
+            "transcript": {
+                "fullText": transcript_text,
+                "segments": classified_segments,
+            },
+            "classificationConfidence": confidence,
+            "normalizationApplied": norm_applied,
+            "rawScores": raw_score_map,
+            "audioMetrics": None,
+            "inputType": "text",
+            "wpmFlag": False,
+            "pipelineVersion": PIPELINE_VERSION,
+            "scoringModels": SCORING_MODELS,
+        }
+
+        yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
+            "sermonId": sermon_id,
+            "updates": updates,
+        })
+
+        _set_status(context, sermon_id, "complete")
+
+    except Exception as e:
+        if not context.is_replaying:
+            log.error(f"[text_orchestrator] {sermon_id}: pipeline failed: {e}", exc_info=True)
+        _set_status(context, sermon_id, "failed")
+        try:
+            yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
+                "sermonId": sermon_id,
+                "updates": fail_sermon_doc(str(e)),
+            })
+        except Exception as update_err:
+            if not context.is_replaying:
+                log.critical(
+                    f"[text_orchestrator] {sermon_id}: DOUBLE FAULT — pipeline failed ({e}) "
+                    f"AND error recording failed ({update_err}). Sermon stuck at 'processing'."
+                )
 
 
 # ─────────────────────────────────────────────
