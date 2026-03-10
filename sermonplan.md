@@ -48,10 +48,10 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 - No auth — skip Azure AD B2C, just get the pipeline working
 - Transcription via Azure AI Speech (with timestamps)
 - Segment classification via Azure OpenAI (scripture, teaching, anecdote, application, etc.)
-- Scripture detection and verification against Bible text (GPT-4's built-in knowledge)
+- Scripture detection and verification against Bible text (o4-mini's built-in knowledge)
 - PSR scoring — all 8 categories + composite
-- Parselmouth for audio-level metrics (pitch, volume, pauses) — proven in POC #3, feeds pre-computed data to GPT-4. **Only** open-source analysis tool in MVP (textstat and spaCy dropped — POC #4 showed nonsensical results on whisper transcripts)
-- GPT-4 for all text analysis — POC #4 confirmed LLM is significantly more accurate than NLP heuristics. POC #5 confirmed Azure AI Speech transcription quality is superior to local Whisper for scripture detection (correctly parses "Romans 8:28" vs Whisper's "Romans 828")
+- Parselmouth for audio-level metrics (pitch, volume, pauses) — proven in POC #3, feeds pre-computed data to LLM scoring passes. **Only** open-source analysis tool in MVP (textstat and spaCy dropped — POC #4 showed nonsensical results on whisper transcripts)
+- Multi-model LLM strategy for text analysis — o4-mini (biblical reasoning), gpt-5-mini (structure eval), gpt-5-nano (delivery eval, classification, segments, enrichment, summary). POC #4 confirmed LLM is significantly more accurate than NLP heuristics. POC #5 confirmed Azure AI Speech transcription quality is superior to local Whisper for scripture detection (correctly parses "Romans 8:28" vs Whisper's "Romans 828")
 - Simple web UI (Next.js on Static Web Apps): upload page, sermon feed, sermon detail with scorecard + transcript
 - Processing status indicator while sermon is being analyzed
 - English only, max 1 hour
@@ -96,7 +96,7 @@ The goal: **upload a sermon, get a score, see the results.** Nothing else.
 | **Durable Functions** | Pipeline orchestration |
 | **Blob Storage** | Store uploaded audio files |
 | **AI Speech Service** | Transcription with timestamps |
-| **Azure OpenAI** | Multi-model: o4-mini (biblical reasoning), GPT-4.1 (structure eval), GPT-4.1-mini (delivery eval + classification). GPT-4.1-nano not yet deployable — using mini. See [research](docs/research.md#azure-openai-model-selection-research-july-2025) and [deployment reference](docs/research.md#azure-openai-deployment-reference) |
+| **Azure OpenAI** | Multi-model: o4-mini (biblical reasoning), gpt-5-mini (structure eval), gpt-5-nano (delivery eval, classification, segments, enrichment, summary). See [research](docs/research.md#azure-openai-model-selection-research-july-2025) and [deployment reference](docs/research.md#azure-openai-deployment-reference) |
 | **Cosmos DB** | Sermon metadata + results (serverless tier) |
 | **Key Vault** | Secrets |
 
@@ -119,41 +119,55 @@ Upload audio file
     ▼
 3. Durable Function Orchestrator:
     │
+    │   ── Wave 1: Transcribe + Audio (parallel) ──
+    │
     ├─► Transcribe (Azure AI Speech fast transcription API — timestamps + diarization)
     │     Synchronous, handles up to 2hr/300MB natively. No blob storage needed.
     │     POC #6: 3,762 words in 44s for 35-min sermon. $1.00/hr.
     ├─► Audio analysis (Parselmouth — pitch, volume, pauses)
-    │     (runs in parallel with transcription)
+    │     Runs in parallel with transcription.
+    │     Graceful degradation: if Parselmouth fails, pipeline continues
+    │     without audio metrics (delivery scores based on text cues only).
     │
-    │   ── throttle-aware parallel passes (fan-out) ──
+    │   ── Wave 2: 6 LLM passes in parallel (throttle-aware fan-out) ──
     │   Scheduler estimates tokens per pass, groups by deployment,
     │   runs in parallel only when combined tokens fit within 80% of TPM limit.
     │   Falls back to sequential batches with 60s gaps when needed.
     │
-    ├─► Pass 1: Biblical Analysis — o4-mini ($1.10/$4.40 per 1M tokens)
+    ├─► Pass 1: Biblical Analysis — o4-mini
     │     Categories: Biblical Accuracy, Time in the Word, Passage Focus
     │     Why o4-mini: scripture verification needs chain-of-thought reasoning
     │     ("is this quote used in context?") — reasoning model required
     │
-    ├─► Pass 2: Structure & Content — GPT-4.1 ($2.00/$8.00 per 1M tokens)
+    ├─► Pass 2: Structure & Content — gpt-5-mini
     │     Categories: Clarity, Application, Engagement
-    │     Why GPT-4.1: rubric-following + structured JSON output — best
+    │     Why gpt-5-mini: rubric-following + structured JSON output — best
     │     instruction-following model, no deep reasoning needed
     │
-    ├─► Pass 3: Delivery — GPT-4.1-mini ($0.40/$1.60 per 1M tokens)
+    ├─► Pass 3: Delivery — gpt-5-nano
     │     Categories: Delivery, Emotional Range
-    │     Why GPT-4.1-mini: interprets pre-computed Parselmouth data
+    │     Why gpt-5-nano: interprets pre-computed Parselmouth data
     │     (pitch, pauses, volume) — heavy lifting already done, cheapest
-    │     model with reliable structured output
+    │     model with reliable structured output.
+    │     Graceful degradation: if audio unavailable, scores from text cues
+    │     only with confidence_level="low" and conservative 50-75 range.
     │
-    ├─► Sermon type classification + metadata extraction — GPT-4.1-mini
+    ├─► Sermon type classification + metadata extraction — gpt-5-nano
     │     Classification: expository / topical / survey
-    │     Metadata: sermon title, pastor name, main passage (if not provided by uploader)
+    │     Metadata: sermon title, pastor name, main passage
+    │     Samples beginning + middle + end of transcript (POC #8 fix)
     │
-    ├─► Segment classification — GPT-4.1-mini
+    ├─► Segment classification — gpt-5-nano
     │     Label transcript segments: scripture / teaching / application /
     │     anecdote / illustration / prayer / transition
-    │     Required for frontend transcript viewer color-coding
+    │     Batches at 200 segments for accuracy on long sermons.
+    │     Required for frontend transcript viewer color-coding.
+    │
+    ├─► Pass 4: Enrichment — gpt-5-nano
+    │     Detects biblical language references (Hebrew, Greek, Aramaic terms
+    │     the speaker translates or explains) and church history mentions
+    │     (post-biblical theologians, movements, creeds).
+    │     Graceful degradation: if it fails, enrichment is null.
     │
     │   ── fan-in ──
     │
@@ -162,7 +176,16 @@ Upload audio file
     │     If classification confidence < 90%, use reduced adjustments (POC #10)
     │     Parselmouth: filter intensity below 5th percentile noise floor (POC #8)
     │
+    ├─► Generate summary — gpt-5-nano (sequential, after fan-in)
+    │     Takes scored categories + sermon type, produces:
+    │     - Summary paragraph
+    │     - Strengths list
+    │     - Improvements list
+    │
     └─► Store results in Cosmos DB, update status to complete
+         Stores: scores, transcript, classified segments, enrichment,
+         audio metrics, raw (pre-normalization) scores, classification
+         confidence, normalization applied, pipeline version, scoring models.
 ```
 
 **~$0.75 per sermon** ($0.67 speech + $0.09 OpenAI). See [cost analysis](docs/research.md#cost-analysis-all-poc-runs) for full breakdown.
