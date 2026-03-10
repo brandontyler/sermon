@@ -191,11 +191,13 @@ PASSAGE FOCUS — CONDITIONAL RUBRIC:
     15-49: Announced a passage then mostly abandoned it
     0-14: No identifiable main passage or completely ignored it
   FOR MULTI-PASSAGE SERMONS: Score based on "Scriptural Integration" — are the multiple passages handled faithfully and do they support a unified biblical thesis?
-    85-95: Multiple passages, each in context, building a coherent biblical argument
-    70-84: Good integration of passages with a clear unifying theme from Scripture
-    50-69: Multiple passages referenced but connections are loose or some are proof-texted
-    15-49: Passages feel random, no unifying biblical thesis
+    85-95: Multiple passages, each EXEGETED in context (not just quoted), building a coherent biblical argument with clear textual connections between passages
+    70-84: Most passages are explained in context with a clear unifying biblical theme; minor proof-texting on 1-2 supporting verses is acceptable
+    55-69: Theme is biblical but passages are handled superficially — quoted or paraphrased without exegesis, used as springboards for stories rather than taught
+    40-54: Passages are referenced but function as decoration — the sermon could make the same points without them
+    15-39: Passages feel random, no unifying biblical thesis, or most are proof-texted
     0-14: No clear scriptural basis for the theme
+  CRITICAL: Touching a verse then immediately pivoting to a personal story or motivational point = superficial handling (55-69 range). The passage must be TAUGHT, not just CITED.
 
 SCORING SCALE — use the FULL 0-100 range, not just 40-90:
   0-15:  Harmful — fabricated scripture, heretical claims, dangerous theology
