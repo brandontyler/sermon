@@ -47,6 +47,11 @@ After clone/checkout: `br sync --import-only`. After git pull: `br sync --import
 - Create new issues for discovered work rather than leaving TODOs in code
 - Flush after mutations: `br sync --flush-only`
 
+### Cost Controls
+
+- **NEVER kick off a full rescore (`POST /api/rescore {"all": true}`) without asking Brandon or Orlando first.** Rescores cost ~$1.50 and take ~90 minutes. Always propose the rescore, explain what changed and why it's needed, and wait for approval before executing.
+- Same applies to any bulk Azure operation that incurs significant cost or compute time.
+
 ## Tech Stack (MVP)
 
 | Layer | Tech |

@@ -321,6 +321,169 @@ async def upload_text_sermon(req: func.HttpRequest, starter: df.DurableOrchestra
     return _json_response({"id": sermon_id, "status": "processing"}, 202)
 
 
+def _extract_video_id(url):
+    """Extract YouTube video ID from various URL formats."""
+    import re
+    patterns = [
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$',
+    ]
+    for p in patterns:
+        m = re.search(p, url.strip())
+        if m:
+            return m.group(1)
+    return None
+
+
+def _parse_timestamp(ts):
+    """Parse H:MM:SS or MM:SS or SS into seconds. Returns None on failure."""
+    if not ts or not ts.strip():
+        return None
+    parts = ts.strip().split(":")
+    try:
+        parts = [int(p) for p in parts]
+    except ValueError:
+        return None
+    if len(parts) == 3:
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    if len(parts) == 1:
+        return parts[0]
+    return None
+
+
+@app.route(route="sermons/youtube", methods=["POST"])
+@app.durable_client_input(client_name="starter")
+@app.function_name("upload_youtube_sermon")
+async def upload_youtube_sermon(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
+    """POST /api/sermons/youtube — Fetch YouTube transcript and start processing."""
+    import datetime
+    from azure.cosmos import CosmosClient
+
+    try:
+        body = req.get_json()
+    except Exception:
+        return _json_response({"error": "Invalid JSON"}, 400)
+
+    url = body.get("url", "").strip()
+    video_id = _extract_video_id(url)
+    if not video_id:
+        return _json_response({"error": "Invalid YouTube URL"}, 400)
+
+    start_sec = _parse_timestamp(body.get("start", ""))
+    end_sec = _parse_timestamp(body.get("end", ""))
+    if start_sec is None or end_sec is None:
+        return _json_response({"error": "Start and end timestamps are required (format: H:MM:SS)"}, 400)
+    if end_sec <= start_sec:
+        return _json_response({"error": "End time must be after start time"}, 400)
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    # ── Concurrency gate ──
+    MAX_CONCURRENT = 3
+    try:
+        processing = list(container.query_items(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.status = 'processing'",
+            enable_cross_partition_query=True,
+        ))
+        if processing and processing[0] >= MAX_CONCURRENT:
+            return _json_response({"error": "Server is busy processing other sermons. Please try again in a few minutes."}, 429)
+    except Exception:
+        pass
+
+    # ── Rate limit ──
+    client_ip = req.headers.get("X-Forwarded-For", req.headers.get("REMOTE_ADDR", "unknown"))
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    try:
+        one_hour_ago = (datetime.datetime.utcnow() - datetime.timedelta(hours=1)).isoformat() + "Z"
+        recent = list(container.query_items(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.uploaderIp = @ip AND c.uploadedAt > @since",
+            parameters=[{"name": "@ip", "value": client_ip}, {"name": "@since", "value": one_hour_ago}],
+            enable_cross_partition_query=True,
+        ))
+        if recent and recent[0] >= 5:
+            return _json_response({"error": "Upload limit reached. Try again in an hour."}, 429)
+    except Exception:
+        pass
+
+    # ── Fetch YouTube transcript ──
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api.proxies import WebshareProxyConfig
+
+        proxy_user = os.environ.get("WEBSHARE_PROXY_USERNAME", "")
+        proxy_pass = os.environ.get("WEBSHARE_PROXY_PASSWORD", "")
+
+        if proxy_user and proxy_pass:
+            ytt = YouTubeTranscriptApi(proxy_config=WebshareProxyConfig(
+                proxy_username=proxy_user, proxy_password=proxy_pass,
+            ))
+        else:
+            ytt = YouTubeTranscriptApi()
+
+        fetched = ytt.fetch(video_id, languages=["en"])
+        # Filter to requested time range
+        filtered = [s for s in fetched if s.start >= start_sec and s.start < end_sec]
+        if not filtered:
+            return _json_response({"error": f"No transcript found between {body.get('start')} and {body.get('end')}. Check your timestamps."}, 400)
+        transcript_text = " ".join(s.text for s in filtered)
+    except Exception as e:
+        err_str = str(e)
+        log.warning(f"[upload_youtube] Failed to fetch transcript for {video_id}: {e}")
+        if "blocking" in err_str.lower() or "ip" in err_str.lower() or "RequestBlocked" in err_str or "IpBlocked" in err_str:
+            return _json_response({
+                "error": "YouTube is blocking our server. Please use the text upload instead — open the YouTube video, click '...' → 'Show transcript', copy the text, paste it into a .txt file, and upload it.",
+                "code": "IP_BLOCKED",
+            }, 400)
+        return _json_response({"error": "Could not fetch transcript. The video may not have English captions, or the URL may be invalid."}, 400)
+
+    word_count = len(transcript_text.split())
+    if word_count < 50:
+        return _json_response({"error": "Transcript too short (under 50 words). Try a different video."}, 400)
+
+    title = body.get("title") or None
+    pastor = body.get("pastor") or None
+    sermon_id = str(uuid.uuid4())
+
+    # ── Create Cosmos DB record ──
+    doc = new_sermon_doc(sermon_id, f"youtube-{video_id}", title, pastor)
+    doc["uploaderIp"] = client_ip
+    doc["uploadedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+    doc["inputType"] = "youtube"
+    doc["youtubeVideoId"] = video_id
+    doc["youtubeUrl"] = f"https://www.youtube.com/watch?v={video_id}"
+    doc["youtubeStart"] = start_sec
+    doc["youtubeEnd"] = end_sec
+    try:
+        container.create_item(doc)
+    except Exception as e:
+        log.error(f"[upload_youtube] Cosmos create failed for {sermon_id}: {e}", exc_info=True)
+        return _json_response({"error": "Failed to create sermon record. Please retry."}, 500)
+
+    # ── Start text orchestrator (same as text upload — no audio) ──
+    try:
+        instance_id = await starter.start_new("text_sermon_orchestrator", client_input={
+            "sermonId": sermon_id,
+            "transcript": transcript_text,
+            "wordCount": word_count,
+            "userTitle": title,
+            "userPastor": pastor,
+        })
+        log.info(f"[upload_youtube] Started orchestrator {instance_id} for sermon {sermon_id} (video {video_id}, {word_count} words)")
+    except Exception as e:
+        log.error(f"[upload_youtube] Orchestrator start failed for {sermon_id}: {e}", exc_info=True)
+        try:
+            container.upsert_item({**doc, **fail_sermon_doc("Orchestrator failed to start — please re-upload")})
+        except Exception:
+            pass
+        return _json_response({"error": "Processing failed to start. Please retry."}, 500)
+
+    return _json_response({"id": sermon_id, "status": "processing"}, 202)
+
+
 @app.route(route="sermons", methods=["GET"])
 @app.function_name("list_sermons")
 async def list_sermons(req: func.HttpRequest) -> func.HttpResponse:
@@ -331,7 +494,7 @@ async def list_sermons(req: func.HttpRequest) -> func.HttpResponse:
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
     container = cosmos.get_database_client("psr").get_container_client("sermons")
 
-    query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr, c.inputType FROM c ORDER BY c.date DESC"
+    query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr, c.inputType, c.bonus, c.totalScore FROM c ORDER BY c.date DESC"
     items = list(container.query_items(query, enable_cross_partition_query=True))
 
     return _json_response(items)
@@ -358,6 +521,125 @@ async def get_sermon(req: func.HttpRequest) -> func.HttpResponse:
         doc.pop(key, None)
 
     return _json_response(doc)
+
+
+@app.route(route="sermons/{sermon_id}/translate", methods=["POST"])
+@app.function_name("translate_sermon")
+async def translate_sermon(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/sermons/{id}/translate — Translate transcript via Azure Translator."""
+    import requests as http_requests
+    from azure.cosmos import CosmosClient, exceptions
+
+    sermon_id = req.route_params.get("sermon_id")
+    try:
+        body = req.get_json()
+    except Exception:
+        return _json_response({"error": "Invalid JSON"}, 400)
+
+    target_lang = body.get("language", "es")
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    try:
+        doc = container.read_item(sermon_id, partition_key=sermon_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Sermon not found"}, 404)
+
+    # Check cache
+    cached = doc.get("translations", {}).get(target_lang)
+    if cached:
+        return _json_response({"language": target_lang, "text": cached})
+
+    text = doc.get("transcript", {}).get("fullText", "")
+    if not text:
+        return _json_response({"error": "No transcript available"}, 400)
+
+    # Azure Translator API — split into chunks of 5000 chars (API limit)
+    key = os.environ.get("TRANSLATOR_KEY", "")
+    region = os.environ.get("TRANSLATOR_REGION", "eastus2")
+    if not key:
+        return _json_response({"error": "Translation service not configured"}, 500)
+
+    chunks = [text[i:i+5000] for i in range(0, len(text), 5000)]
+    translated_parts = []
+    for chunk in chunks:
+        for attempt in range(3):
+            resp = http_requests.post(
+                "https://api.cognitive.microsofttranslator.com/translate",
+                params={"api-version": "3.0", "to": target_lang},
+                headers={"Ocp-Apim-Subscription-Key": key, "Ocp-Apim-Subscription-Region": region, "Content-Type": "application/json"},
+                json=[{"Text": chunk}],
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                translated_parts.append(resp.json()[0]["translations"][0]["text"])
+                break
+            elif resp.status_code == 429:
+                import time
+                time.sleep(2 * (attempt + 1))
+            else:
+                log.error(f"[translate] Azure Translator error: {resp.status_code} {resp.text}")
+                return _json_response({"error": "Translation failed"}, 500)
+        else:
+            return _json_response({"error": "Translation rate limited. Try again in a moment."}, 429)
+
+    translated = "".join(translated_parts)
+
+    # Cache in Cosmos
+    translations = doc.get("translations", {})
+    translations[target_lang] = translated
+    doc["translations"] = translations
+    container.upsert_item(doc)
+
+    return _json_response({"language": target_lang, "text": translated})
+
+
+@app.route(route="sermons/{sermon_id}/bonus", methods=["PATCH"])
+@app.function_name("apply_bonus")
+async def apply_bonus(req: func.HttpRequest) -> func.HttpResponse:
+    """PATCH /api/sermons/{id}/bonus — Apply bonus points (admin only)."""
+    import os
+    from azure.cosmos import CosmosClient, exceptions
+
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    provided = req.headers.get("x-admin-key", "")
+    if not admin_key or provided != admin_key:
+        return _json_response({"error": "Unauthorized"}, 401)
+
+    sermon_id = req.route_params.get("sermon_id")
+    try:
+        body = req.get_json()
+    except Exception:
+        return _json_response({"error": "Invalid JSON"}, 400)
+
+    bonus = body.get("bonus")
+    if bonus is None or not isinstance(bonus, (int, float)) or abs(bonus) > 50:
+        return _json_response({"error": "bonus must be a number between -50 and 50"}, 400)
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    try:
+        doc = container.read_item(sermon_id, partition_key=sermon_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Sermon not found"}, 404)
+
+    if doc.get("status") != "complete":
+        return _json_response({"error": "Sermon not yet scored"}, 400)
+
+    bonus = round(bonus, 1)
+    psr = doc["compositePsr"]
+    total = round(min(100, max(0, psr + bonus)), 1)
+
+    doc["bonus"] = bonus
+    doc["bonusReason"] = body.get("reason", "")
+    doc["bonusRows"] = body.get("bonusRows")
+    doc["totalScore"] = total
+    container.upsert_item(doc)
+
+    log.info(f"[apply_bonus] {sermon_id}: PSR={psr}, bonus={bonus}, total={total}")
+    return _json_response({"id": sermon_id, "compositePsr": psr, "bonus": bonus, "totalScore": total})
 
 
 def _json_response(body, status=200):
@@ -463,6 +745,11 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             {"segments": transcript_result["segments"]},
         )
 
+        pass4_task = context.call_activity_with_retry(
+            "activity_pass4_enrichment", RETRY_LLM,
+            {"transcript": transcript_text},
+        )
+
         # Fan-in
         pass1 = yield pass1_task
         pass2 = yield pass2_task
@@ -475,6 +762,14 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             classified_segments = transcript_result["segments"]
             if not context.is_replaying:
                 log.warning(f"[orchestrator] {sermon_id}: segment classification failed ({e}), using defaults")
+
+        try:
+            enrichment_result = yield pass4_task
+            enrichment = enrichment_result.get("enrichment")
+        except Exception as e:
+            enrichment = None
+            if not context.is_replaying:
+                log.warning(f"[orchestrator] {sermon_id}: pass4 enrichment failed ({e}), skipping")
 
         # ── Normalize + composite ──
         _set_status(context, sermon_id, "finalizing")
@@ -520,6 +815,7 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "rawScores": raw_score_map,
             "audioMetrics": audio_metrics,
             "wpmFlag": wpm_flag,
+            "enrichment": enrichment,
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
         }
@@ -571,8 +867,23 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
         estimated_duration = word_count / 140 * 60  # seconds
         wpm = 140.0
 
-        # ── Build segments from paragraphs ──
+        # ── Build segments from paragraphs (split large blocks into ~100-word chunks) ──
         paragraphs = [p.strip() for p in transcript_text.split("\n") if p.strip()]
+        # If text has very few paragraphs, split into sentence-based chunks
+        if len(paragraphs) <= 3 and word_count > 200:
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', transcript_text.strip())
+            chunks, current = [], []
+            wc = 0
+            for s in sentences:
+                current.append(s)
+                wc += len(s.split())
+                if wc >= 100:
+                    chunks.append(" ".join(current))
+                    current, wc = [], 0
+            if current:
+                chunks.append(" ".join(current))
+            paragraphs = chunks if len(chunks) > 3 else paragraphs
         seg_duration = estimated_duration / max(len(paragraphs), 1)
         segments = []
         for i, para in enumerate(paragraphs):
@@ -613,6 +924,11 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "activity_classify_segments", RETRY_LIGHT, {"segments": segments},
         )
 
+        pass4_task = context.call_activity_with_retry(
+            "activity_pass4_enrichment", RETRY_LLM,
+            {"transcript": transcript_text},
+        )
+
         pass1 = yield pass1_task
         pass2 = yield pass2_task
         pass3 = yield pass3_task
@@ -622,6 +938,12 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             classified_segments = yield segment_task
         except Exception:
             classified_segments = segments
+
+        try:
+            enrichment_result = yield pass4_task
+            enrichment = enrichment_result.get("enrichment")
+        except Exception:
+            enrichment = None
 
         # ── Normalize + composite ──
         _set_status(context, sermon_id, "finalizing")
@@ -665,6 +987,7 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "audioMetrics": None,
             "inputType": "text",
             "wpmFlag": False,
+            "enrichment": enrichment,
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
         }
@@ -764,7 +1087,7 @@ def rescore_orchestrator(context: df.DurableOrchestrationContext):
 
 from activities import (
     transcribe, analyze_audio, pass1_biblical, pass2_structure,
-    pass3_delivery, classify_sermon, classify_segments,
+    pass3_delivery, pass4_enrichment, classify_sermon, classify_segments,
     generate_summary, update_sermon, rescore_sermon,
 )
 
@@ -804,6 +1127,10 @@ def activity_pass2_structure(input: dict):
 @bp.activity_trigger(input_name="input")
 def activity_pass3_delivery(input: dict):
     return _run_activity("pass3_delivery", pass3_delivery, input)
+
+@bp.activity_trigger(input_name="input")
+def activity_pass4_enrichment(input: dict):
+    return _run_activity("pass4_enrichment", pass4_enrichment, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_classify_sermon(input: dict):

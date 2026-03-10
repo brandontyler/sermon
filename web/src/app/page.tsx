@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiUrl } from "@/lib/api";
@@ -10,7 +10,20 @@ const ALLOWED_TEXT_EXT = [".txt", ".md", ".html", ".htm", ".rtf", ".xml", ".csv"
 const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
 const MAX_TEXT_SIZE = 10 * 1024 * 1024;
 
-type UploadMode = "audio" | "text";
+type UploadMode = "audio" | "text" | "youtube";
+
+function Spinner() {
+  return (
+    <div className="flex flex-col items-center gap-4 py-8">
+      <div className="relative w-12 h-12">
+        <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
+        <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-blue-600 animate-spin" />
+      </div>
+      <p className="text-sm text-gray-500">Analyzing sermon…</p>
+      <p className="text-xs text-gray-400">This usually takes about 5 minutes</p>
+    </div>
+  );
+}
 
 function isTextFile(f: File): boolean {
   const ext = f.name.toLowerCase().slice(f.name.lastIndexOf("."));
@@ -23,11 +36,26 @@ export default function UploadPage() {
   const textRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<UploadMode>("audio");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [ytStart, setYtStart] = useState("");
+  const [ytEnd, setYtEnd] = useState("");
   const [title, setTitle] = useState("");
   const [pastor, setPastor] = useState("");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [pastors, setPastors] = useState<string[]>([]);
+  const [isNewPastor, setIsNewPastor] = useState(false);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/sermons"))
+      .then((r) => r.json())
+      .then((data) => {
+        const names = [...new Set(data.map((s: { pastor?: string }) => s.pastor).filter(Boolean))] as string[];
+        setPastors(names.sort());
+      })
+      .catch(() => {});
+  }, []);
 
   function handleAudioFile(f: File) {
     setError("");
@@ -58,12 +86,40 @@ export default function UploadPage() {
   }
 
   async function handleSubmit() {
-    if (!file) return;
+    if (!file && mode !== "youtube") return;
+    if (mode === "youtube" && !youtubeUrl.trim()) return;
     setUploading(true);
     setError("");
     try {
+      if (mode === "youtube") {
+        const res = await fetch(apiUrl("/api/sermons/youtube"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: youtubeUrl.trim(),
+            start: ytStart.trim(),
+            end: ytEnd.trim(),
+            title: title.trim() || undefined,
+            pastor: pastor.trim() || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.code === "IP_BLOCKED") {
+            setError("YouTube is blocking our server. Open the video → click '...' → 'Show transcript' → copy the text → upload as a text file instead.");
+          } else {
+            throw new Error(data.error || "Something went wrong.");
+          }
+          setUploading(false);
+          setProgress(0);
+          return;
+        }
+        router.push(`/sermons/${data.id}`);
+        return;
+      }
+
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", file!);
       if (title.trim()) form.append("title", title.trim());
       if (pastor.trim()) form.append("pastor", pastor.trim());
 
@@ -109,7 +165,7 @@ export default function UploadPage() {
         <h1 className="text-xl text-gray-900 font-semibold">PSR</h1>
         <p className="text-sm text-gray-500 mb-8">Pastor Sermon Rating</p>
 
-        {!file ? (
+        {!file && mode !== "youtube" ? (
           <div className="space-y-4">
             {/* Audio upload */}
             <div
@@ -148,23 +204,126 @@ export default function UploadPage() {
               <input ref={textRef} type="file" accept=".txt,.docx,.md,.rtf,.odt,.html,.htm,.csv,.xml" aria-hidden="true" className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleTextFile(f); }} />
             </div>
+
+            <p className="text-xs text-gray-400">— or —</p>
+
+            {/* YouTube URL */}
+            <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 transition-colors hover:border-gray-300">
+              <p className="text-gray-500 mb-3">▶️ Paste a YouTube link</p>
+              <input
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-400 mb-2"
+                aria-label="YouTube video URL"
+              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">Start *</label>
+                  <input
+                    type="text"
+                    placeholder="0:00:00"
+                    value={ytStart}
+                    onChange={(e) => setYtStart(e.target.value)}
+                    className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-400 text-center"
+                    aria-label="Start timestamp"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">End *</label>
+                  <input
+                    type="text"
+                    placeholder="1:00:00"
+                    value={ytEnd}
+                    onChange={(e) => setYtEnd(e.target.value)}
+                    className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-400 text-center"
+                    aria-label="End timestamp"
+                  />
+                </div>
+              </div>
+              {youtubeUrl.trim() && ytStart.trim() && ytEnd.trim() && (
+                <button
+                  onClick={() => { setFile(null); setMode("youtube"); }}
+                  className="mt-3 w-full bg-red-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-red-700 transition-colors"
+                >
+                  Use This Video
+                </button>
+              )}
+              <p className="text-xs text-gray-400 mt-2">Uses YouTube&apos;s captions · English only · Format: H:MM:SS</p>
+            </div>
+          </div>
+        ) : mode === "youtube" ? (
+          <div className="space-y-4">
+            <p className="text-sm">
+              <span className="text-red-500">▶️</span> {youtubeUrl}
+              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">youtube</span>
+              <span className="ml-1 text-xs text-gray-400">{ytStart} → {ytEnd}</span>
+            </p>
+            <input type="text" placeholder="Sermon title *" aria-label="Sermon title" required
+              value={title} onChange={(e) => setTitle(e.target.value)}
+              className="w-full border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600" />
+            {!isNewPastor ? (
+              <select
+                value={pastor}
+                onChange={(e) => { if (e.target.value === "__new__") { setIsNewPastor(true); setPastor(""); } else { setPastor(e.target.value); } }}
+                className="w-full border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600"
+                aria-label="Pastor name"
+              >
+                <option value="">Select pastor *</option>
+                {pastors.map((p) => <option key={p} value={p}>{p}</option>)}
+                <option value="__new__">+ New pastor...</option>
+              </select>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input type="text" placeholder="New pastor name *" aria-label="New pastor name"
+                  value={pastor} onChange={(e) => setPastor(e.target.value)} autoFocus
+                  className="flex-1 border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600" />
+                <button type="button" onClick={() => { setIsNewPastor(false); setPastor(""); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            )}
+            <button onClick={handleSubmit} disabled={uploading || !title.trim() || !pastor.trim()}
+              className="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {uploading ? "Fetching transcript..." : "Analyze Sermon"}
+            </button>
+            {uploading && <Spinner />}
+            <button onClick={() => { setMode("audio"); setYoutubeUrl(""); setYtStart(""); setYtEnd(""); setError(""); }}
+              className="text-xs text-gray-400 hover:text-gray-600">
+              Choose a different source
+            </button>
           </div>
         ) : (
           <div className="space-y-4">
             <p className="text-sm">
-              <span className="text-green-500">✓</span> {file.name}{" "}
-              <span className="text-gray-400">({(file.size / (1024 * 1024)).toFixed(1)} MB)</span>
+              <span className="text-green-500">✓</span> {file!.name}{" "}
+              <span className="text-gray-400">({(file!.size / (1024 * 1024)).toFixed(1)} MB)</span>
               <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                 {mode === "text" ? "text" : "audio"}
               </span>
             </p>
-            <input type="text" placeholder="Sermon title (optional)" aria-label="Sermon title"
+            <input type="text" placeholder="Sermon title *" aria-label="Sermon title" required
               value={title} onChange={(e) => setTitle(e.target.value)}
               className="w-full border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600" />
-            <input type="text" placeholder="Pastor name (optional)" aria-label="Pastor name"
-              value={pastor} onChange={(e) => setPastor(e.target.value)}
-              className="w-full border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600" />
-            <button onClick={handleSubmit} disabled={uploading}
+            {!isNewPastor ? (
+              <select
+                value={pastor}
+                onChange={(e) => { if (e.target.value === "__new__") { setIsNewPastor(true); setPastor(""); } else { setPastor(e.target.value); } }}
+                className="w-full border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600"
+                aria-label="Pastor name"
+              >
+                <option value="">Select pastor *</option>
+                {pastors.map((p) => <option key={p} value={p}>{p}</option>)}
+                <option value="__new__">+ New pastor...</option>
+              </select>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input type="text" placeholder="New pastor name *" aria-label="New pastor name"
+                  value={pastor} onChange={(e) => setPastor(e.target.value)} autoFocus
+                  className="flex-1 border-b border-gray-200 bg-transparent py-2 text-sm outline-none focus:border-blue-600" />
+                <button type="button" onClick={() => { setIsNewPastor(false); setPastor(""); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            )}
+            <button onClick={handleSubmit} disabled={uploading || !title.trim() || !pastor.trim()}
               className="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {uploading ? "Uploading..." : "Analyze Sermon"}
             </button>
@@ -173,6 +332,7 @@ export default function UploadPage() {
                 <div className="bg-blue-600 h-1 rounded-full transition-all" style={{ width: `${progress}%` }} />
               </div>
             )}
+            {uploading && <Spinner />}
             <button onClick={() => { setFile(null); setError(""); setProgress(0); }}
               className="text-xs text-gray-400 hover:text-gray-600">
               Choose a different file

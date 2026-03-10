@@ -11,6 +11,18 @@
       }
     },
     {
+      "route": "/admin",
+      "rewrite": "/admin.html"
+    },
+    {
+      "route": "/dashboard",
+      "rewrite": "/dashboard.html"
+    },
+    {
+      "route": "/calculations",
+      "rewrite": "/calculations.html"
+    },
+    {
       "route": "/sermons",
       "rewrite": "/sermons.html"
     },

@@ -31,3 +31,6 @@ infra/main.json
 # Misc
 gpt41_deploy.log
 retry_gpt41_deploy.sh
+
+# Windows Zone.Identifier alternate data stream files
+*:Zone.Identifier

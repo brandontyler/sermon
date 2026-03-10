@@ -23,6 +23,9 @@ export default function SermonDetailClient() {
   const [id, setId] = useState<string | null>(null);
   const [sermon, setSermon] = useState<SermonDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [transcriptLang, setTranscriptLang] = useState<"en" | "es">("en");
+  const [spanishText, setSpanishText] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Resolve ID from URL on mount (avoids useParams "placeholder" race).
@@ -95,26 +98,39 @@ export default function SermonDetailClient() {
     <div className="max-w-[720px] mx-auto p-4 py-8">
       <Link href="/sermons" className="text-sm text-blue-600 hover:underline">← Back to sermons</Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mt-4">{sermon.title}</h1>
+      <div className="flex items-center gap-3 mt-4">
+        <h1 className="text-2xl font-bold text-gray-900">{sermon.title}</h1>
+        <Link href={`/admin?sermon=${sermon.id}`} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded transition-colors">⚙ Bonus</Link>
+      </div>
       <p className="text-sm text-gray-500 mt-1">
+        {sermon.pastor && (
+          <><Link href={`/dashboard?pastor=${encodeURIComponent(sermon.pastor)}`} className="hover:text-blue-600 hover:underline">{sermon.pastor}</Link> · </>
+        )}
         {[
-          sermon.pastor,
           sermon.date && new Date(sermon.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
           sermon.duration && `${Math.round(sermon.duration / 60)} min`,
         ].filter(Boolean).join(" · ")}
         {sermon.sermonType && (
           <> · <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{sermon.sermonType}</span></>
         )}
+        {sermon.youtubeUrl && (
+          <> · <a href={sermon.youtubeUrl} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-600 text-xs">▶ YouTube</a></>
+        )}
       </p>
 
       {sermon.status === "processing" && (
         <div aria-live="polite" className="mt-12 text-center text-gray-500">
+          <div className="flex justify-center mb-6">
+            <div className="relative w-14 h-14">
+              <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
+              <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-blue-600 animate-spin" />
+            </div>
+          </div>
           <p className="text-lg font-medium text-gray-900 mb-4">Analyzing sermon...</p>
           <div className="space-y-2 text-sm">
-            <p>◻ Transcribing audio</p>
-            <p>◻ Analyzing biblical content</p>
-            <p>◻ Evaluating structure</p>
-            <p>◻ Scoring delivery</p>
+            {["Transcribing audio", "Analyzing biblical content", "Evaluating structure", "Scoring delivery"].map((step, i) => (
+              <p key={i} className="animate-pulse" style={{ animationDelay: `${i * 0.3}s` }}>⏳ {step}</p>
+            ))}
           </div>
           <p className="text-xs text-gray-400 mt-6">This usually takes about 5 minutes.</p>
         </div>
@@ -135,6 +151,16 @@ export default function SermonDetailClient() {
         <>
           <div className="mt-8 flex flex-col items-center">
             <ScoreGauge score={sermon.compositePsr ?? 0} />
+            {sermon.bonus != null && sermon.bonus !== 0 && (
+              <div className="flex items-center gap-2 mt-2 text-sm">
+                <span className="text-gray-500">PSR {sermon.compositePsr?.toFixed(1)}</span>
+                <span className={sermon.bonus > 0 ? "text-green-600 font-bold" : "text-red-500 font-bold"}>
+                  {sermon.bonus > 0 ? "+" : ""}{sermon.bonus.toFixed(1)} bonus
+                </span>
+                <span className="text-gray-500">=</span>
+                <span className="font-bold">{sermon.totalScore?.toFixed(1)}</span>
+              </div>
+            )}
             {sermon.summary && <p className="text-sm text-gray-500 italic mt-4 text-center max-w-md">{sermon.summary}</p>}
           </div>
 
@@ -189,12 +215,84 @@ export default function SermonDetailClient() {
 
           {sermon.transcript && (sermon.transcript.segments.length > 0 || sermon.transcript.fullText) && (
             <div className="mt-10">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Transcript</h3>
-              <TranscriptViewer
-                segments={sermon.transcript.segments.length > 0
-                  ? sermon.transcript.segments
-                  : [{ start: 0, end: 0, text: sermon.transcript.fullText, type: "teaching" }]}
-              />
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-medium text-gray-900">Transcript</h3>
+                  <div className="flex rounded-md border border-gray-200 text-xs overflow-hidden">
+                    <button
+                      onClick={() => setTranscriptLang("en")}
+                      className={`px-3 py-1 ${transcriptLang === "en" ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                    >English</button>
+                    <button
+                      onClick={async () => {
+                        setTranscriptLang("es");
+                        if (spanishText) return;
+                        setTranslating(true);
+                        try {
+                          const r = await fetch(apiUrl(`/api/sermons/${sermon.id}/translate`), {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ language: "es" }),
+                          });
+                          const data = await r.json();
+                          if (r.ok) setSpanishText(data.text);
+                          else setSpanishText(null);
+                        } catch {} finally { setTranslating(false); }
+                      }}
+                      className={`px-3 py-1 ${transcriptLang === "es" ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                    >Español</button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const text = transcriptLang === "es" && spanishText
+                      ? spanishText
+                      : sermon.transcript!.fullText || sermon.transcript!.segments.map(s => s.text).join("\n");
+                    const blob = new Blob([text], { type: "text/plain" });
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${sermon.title || "sermon"}-transcript-${transcriptLang}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  ⬇ Download .txt
+                </button>
+              </div>
+              {transcriptLang === "es" ? (
+                translating ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="relative w-10 h-10 mx-auto mb-3">
+                      <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
+                      <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-blue-600 animate-spin" />
+                    </div>
+                    <p className="text-sm">Translating to Spanish…</p>
+                  </div>
+                ) : spanishText ? (
+                  <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 whitespace-pre-wrap max-h-[500px] overflow-y-auto">
+                    {spanishText}
+                  </div>
+                ) : (
+                  <button onClick={async () => {
+                    setTranslating(true);
+                    try {
+                      const r = await fetch(apiUrl(`/api/sermons/${sermon.id}/translate`), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ language: "es" }),
+                      });
+                      const data = await r.json();
+                      if (r.ok) setSpanishText(data.text);
+                    } catch {} finally { setTranslating(false); }
+                  }} className="text-sm text-blue-600 hover:underline text-center py-4 w-full">Translation failed — click to retry</button>
+                )
+              ) : (
+                <TranscriptViewer
+                  segments={sermon.transcript.segments.length > 0
+                    ? sermon.transcript.segments
+                    : [{ start: 0, end: 0, text: sermon.transcript.fullText, type: "teaching" }]}
+                />
+              )}
             </div>
           )}
         </>

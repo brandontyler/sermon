@@ -22,7 +22,7 @@ export default function ScoreGauge({ score }: { score: number }) {
     return `M ${s.x} ${s.y} A ${radius} ${radius} 0 ${largeArc} 1 ${e.x} ${e.y}`;
   }
 
-  const color = score >= 70 ? "#22c55e" : score >= 50 ? "#eab308" : "#ef4444";
+  const color = score >= 74 ? "#22c55e" : score >= 60 ? "#eab308" : "#ef4444";
 
   return (
     <div className="relative w-[200px] h-[200px]" role="img" aria-label={`PSR score: ${score.toFixed(1)} out of 100`}>

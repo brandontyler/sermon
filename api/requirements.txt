@@ -6,3 +6,5 @@ numpy
 azure-ai-transcription==1.0.0b3
 azure-cosmos
 azure-storage-blob
+requests
+youtube-transcript-api

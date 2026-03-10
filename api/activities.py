@@ -369,6 +369,78 @@ Return JSON:
 
 
 # ─────────────────────────────────────────────
+#  Pass 4: Enrichment (biblical languages + church history)
+# ─────────────────────────────────────────────
+
+def pass4_enrichment(input_data):
+    """Pass 4: Detect biblical language references and church history mentions via LLM.
+
+    Input: {"transcript": str}
+    Output: {"enrichment": {"biblicalLanguages": {...}, "churchHistory": {...}}}
+    """
+    client = _openai_client()
+    transcript = input_data["transcript"]
+
+    resp = client.chat.completions.create(
+        model="gpt-5-nano",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": """You analyze sermon transcripts for biblical language usage and church history references. Return JSON only."""},
+            {"role": "user", "content": f"""Analyze this sermon transcript for two things:
+
+1. **Biblical language references** — Any time the speaker references, translates, or explains a word from Hebrew, Greek, or Aramaic. Include:
+   - Explicit mentions ("the Greek word agape means...")
+   - Transliterated terms used without naming the language (e.g. "hesed", "logos", "shalom", "ruach")
+   - Translation discussions ("this word is better translated as...")
+   - Root word analysis
+   Do NOT count English Bible quotations — only actual foreign language references.
+   Do NOT count fully naturalized English words (amen, hallelujah, sabbath, messiah, angel, apostle, baptize, paradise) — only terms the speaker is actively translating or explaining.
+
+2. **Church history references** — Post-biblical CHRISTIAN/THEOLOGICAL history only. Include:
+   - Church fathers and theologians (Augustine, Luther, Calvin, Spurgeon, Wesley, Aquinas, etc.)
+   - Church events/movements (Reformation, Great Awakening, Council of Nicaea, etc.)
+   - Creeds/confessions (Nicene Creed, Westminster Confession, etc.)
+   - Era references ("the early church fathers", "16th century reformers")
+   - Modern Christian leaders/pastors referenced by name (Billy Graham, Bonhoeffer, etc.)
+   Do NOT count biblical figures (Paul, Peter, Moses) — only post-biblical history.
+   Do NOT count secular political figures (presidents, politicians, generals), secular events (wars, elections, court cases), pop culture, or general world history unless the reference is specifically about their role in CHURCH history.
+
+Return JSON:
+{{
+  "biblicalLanguages": {{
+    "count": <number of distinct references>,
+    "references": [
+      {{"quote": "<short excerpt from transcript>", "language": "Hebrew|Greek|Aramaic", "term": "<the foreign term>"}}
+    ]
+  }},
+  "churchHistory": {{
+    "count": <number of distinct references>,
+    "references": [
+      {{"quote": "<short excerpt from transcript>", "figure_or_event": "<name>", "era": "<era or century>"}}
+    ]
+  }}
+}}
+
+TRANSCRIPT:
+{transcript}"""},
+        ],
+    )
+    from schema import validate_flat_response
+    raw = validate_flat_response(resp.choices[0].message.content, {
+        "biblicalLanguages": {"count": 0, "references": []},
+        "churchHistory": {"count": 0, "references": []},
+    })
+
+    # Ensure counts match reference arrays
+    bl = raw.get("biblicalLanguages", {})
+    ch = raw.get("churchHistory", {})
+    bl["count"] = len(bl.get("references", []))
+    ch["count"] = len(ch.get("references", []))
+
+    return {"enrichment": {"biblicalLanguages": bl, "churchHistory": ch}}
+
+
+# ─────────────────────────────────────────────
 #  Classification + Metadata (POC #8 fix: sample begin+mid+end)
 # ─────────────────────────────────────────────
 
@@ -572,11 +644,53 @@ def rescore_sermon(input_data):
         "userPastor": doc.get("pastor"),
     })
 
+    # Pass 4: enrichment (non-critical)
+    try:
+        enrichment_result = pass4_enrichment({"transcript": transcript})
+        enrichment = enrichment_result.get("enrichment")
+    except Exception as e:
+        enrichment = None
+        log.warning(f"[rescore] {sermon_id}: pass4 enrichment failed ({e}), skipping")
+
     sermon_type = classification["sermonType"]
     confidence = classification["confidence"]
     raw_scores = {**pass1, **pass2, **pass3}
     categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
     composite = compute_composite(categories)
+
+    # Re-classify segments if only 1 exists (broken text uploads)
+    existing_segs = doc.get("transcript", {}).get("segments", [])
+    if len(existing_segs) <= 3 and word_count > 200:
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', transcript.strip())
+        chunks, current = [], []
+        wc = 0
+        for s in sentences:
+            current.append(s)
+            wc += len(s.split())
+            if wc >= 100:
+                chunks.append(" ".join(current))
+                current, wc = [], 0
+        if current:
+            chunks.append(" ".join(current))
+        if len(chunks) > 3:
+            dur = doc.get("duration") or (word_count / 140 * 60)
+            seg_dur = dur / len(chunks)
+            rebuilt = [{"start": round(i * seg_dur, 2), "end": round((i + 1) * seg_dur, 2), "text": c, "type": "teaching"} for i, c in enumerate(chunks)]
+            try:
+                classified = classify_segments({"segments": rebuilt})
+            except Exception as e:
+                classified = rebuilt
+                log.warning(f"[rescore] {sermon_id}: segment reclassification failed ({e})")
+        else:
+            classified = existing_segs
+    else:
+        # Re-classify existing segments with current model
+        try:
+            classified = classify_segments({"segments": existing_segs})
+        except Exception as e:
+            classified = existing_segs
+            log.warning(f"[rescore] {sermon_id}: segment reclassification failed ({e})")
 
     summary = generate_summary({"categories": categories, "sermonType": sermon_type})
 
@@ -603,6 +717,11 @@ def rescore_sermon(input_data):
             "summary": summary.get("summary"),
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
+            "enrichment": enrichment,
+            "transcript": {
+                "fullText": transcript,
+                "segments": classified,
+            },
             "previousScores": previous,
             "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
         },

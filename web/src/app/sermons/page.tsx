@@ -49,7 +49,7 @@ export default function SermonsPage() {
 
   const sorted = [...filtered].sort((a, b) => {
     const dir = sortAsc ? 1 : -1;
-    if (sortBy === "compositePsr") return ((a.compositePsr ?? -1) - (b.compositePsr ?? -1)) * dir;
+    if (sortBy === "compositePsr") return (((a.totalScore ?? a.compositePsr ?? -1) - (b.totalScore ?? b.compositePsr ?? -1)) * dir);
     return a.date.localeCompare(b.date) * dir;
   });
 
@@ -118,8 +118,8 @@ export default function SermonsPage() {
                 <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/sermons/${s.id}`)}>
                   <td className="p-3">
                     {s.status === "complete" && s.compositePsr != null ? (
-                      <span className={`text-lg font-bold ${scoreColor(s.compositePsr)}`}>
-                        {s.compositePsr.toFixed(1)}
+                      <span className={`text-lg font-bold ${scoreColor(s.totalScore ?? s.compositePsr)}`}>
+                        {(s.totalScore ?? s.compositePsr).toFixed(1)}
                       </span>
                     ) : s.status === "failed" ? (
                       <span className="text-xs text-red-500 font-medium">Failed</span>
@@ -129,7 +129,7 @@ export default function SermonsPage() {
                   </td>
                   <td className="p-3">
                     <div className="font-medium text-gray-900">{s.title}</div>
-                    {s.pastor && <div className="text-xs text-gray-500">{s.pastor}</div>}
+                    {s.pastor && <div className="text-xs text-gray-500"><a href={`/dashboard?pastor=${encodeURIComponent(s.pastor)}`} className="hover:text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>{s.pastor}</a></div>}
                   </td>
                   <td className="p-3 hidden sm:table-cell">
                     {s.sermonType && (
@@ -139,7 +139,7 @@ export default function SermonsPage() {
                     )}
                   </td>
                   <td className="p-3 hidden sm:table-cell">
-                    <span className="text-xs text-gray-500">{s.inputType === "text" ? "📄 Text" : "🎙️ Audio"}</span>
+                    <span className="text-xs text-gray-500">{s.inputType === "youtube" ? "▶️ YouTube" : s.inputType === "text" ? "📄 Text" : "🎙️ Audio"}</span>
                   </td>
                   <td className="p-3 text-gray-500 hidden sm:table-cell">{formatDuration(s.duration)}</td>
                   <td className="p-3 text-gray-500">{formatDate(s.date)}</td>

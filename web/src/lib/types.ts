@@ -9,7 +9,9 @@ export interface SermonSummary {
   status: "processing" | "complete" | "failed";
   sermonType: string | null;
   compositePsr: number | null;
-  inputType?: "audio" | "text";
+  inputType?: "audio" | "text" | "youtube";
+  bonus?: number;
+  totalScore?: number;
 }
 
 export interface CategoryScore {
@@ -38,6 +40,8 @@ export interface AudioMetrics {
 
 export interface SermonDetail extends SermonSummary {
   summary: string | null;
+  bonus?: number;
+  totalScore?: number;
   categories: Record<string, CategoryScore> | null;
   strengths: string[] | null;
   improvements: string[] | null;
@@ -49,6 +53,7 @@ export interface SermonDetail extends SermonSummary {
   failedAt: string | null;
   blobUrl: string | null;
   filename: string | null;
+  youtubeUrl?: string | null;
   wpmFlag: boolean;
   audioMetrics: AudioMetrics | null;
   classificationConfidence: number | null;
@@ -90,13 +95,13 @@ export const CATEGORY_ORDER = [
 ];
 
 export function scoreColor(score: number): string {
-  if (score >= 70) return "text-green-500";
-  if (score >= 50) return "text-yellow-500";
+  if (score >= 74) return "text-green-500";
+  if (score >= 60) return "text-yellow-500";
   return "text-red-500";
 }
 
 export function scoreBgColor(score: number): string {
-  if (score >= 70) return "bg-green-500";
-  if (score >= 50) return "bg-yellow-500";
+  if (score >= 74) return "bg-green-500";
+  if (score >= 60) return "bg-yellow-500";
   return "bg-red-500";
 }
