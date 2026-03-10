@@ -182,6 +182,21 @@ def pass1_biblical(input_data):
   IMPORTANT: "Time in the Word" measures BIBLICAL CONTENT DENSITY — not just direct quotation. Score based on how much is grounded in biblical truth (quoted, taught, applied, exposited) vs secular content. 90-100=nearly all biblical, 70-89=majority, 50-69=mix, 30-49=more illustration, 0-29=minimal.
 - "passage_focus": {{"score": 0-100, "main_passage": "...", "time_on_main_passage_pct": %, "tangent_count": int, "reasoning": "..."}}
 
+PASSAGE FOCUS — CONDITIONAL RUBRIC:
+  First determine: is this sermon single-passage (expository) or multi-passage (topical/thematic)?
+  FOR SINGLE-PASSAGE SERMONS: Score based on depth and time spent on the announced/main passage.
+    85-95: Deep verse-by-verse exposition, rarely leaves the passage
+    70-84: Solid time on main passage with brief supporting references
+    50-69: Announced a passage but spent significant time elsewhere
+    15-49: Announced a passage then mostly abandoned it
+    0-14: No identifiable main passage or completely ignored it
+  FOR MULTI-PASSAGE SERMONS: Score based on "Scriptural Integration" — are the multiple passages handled faithfully and do they support a unified biblical thesis?
+    85-95: Multiple passages, each in context, building a coherent biblical argument
+    70-84: Good integration of passages with a clear unifying theme from Scripture
+    50-69: Multiple passages referenced but connections are loose or some are proof-texted
+    15-49: Passages feel random, no unifying biblical thesis
+    0-14: No clear scriptural basis for the theme
+
 SCORING SCALE — use the FULL 0-100 range, not just 40-90:
   0-15:  Harmful — fabricated scripture, heretical claims, dangerous theology
   15-30: Poor — out-of-context proof-texting, scripture used as decoration, no real exegesis
@@ -191,13 +206,23 @@ SCORING SCALE — use the FULL 0-100 range, not just 40-90:
   85-95: Excellent — seminary-quality exposition, deep and accurate
   95-100: Exceptional — historically significant (Spurgeon, Lloyd-Jones tier)
 
-CALIBRATION EXAMPLES (do NOT default to the 40-60 range for bad sermons):
-- Proof-texting Jeremiah 29:11 as a personal prosperity promise = Biblical Accuracy 15-25
-- Using Philippians 4:13 for mundane tasks (workouts, parking) = Biblical Accuracy 15-25
-- Announcing a passage then never teaching it = Passage Focus 5-15
-- Speaker cannot identify which book a verse is from = Biblical Accuracy penalty
-- Sermon is mostly anecdotes, pop culture, and personal stories with a few verses sprinkled in = Time in the Word 10-25
-- Deep verse-by-verse exposition of a single passage with Greek/Hebrew word study = 85-95 across all three categories
+CALIBRATION EXAMPLES — FULL RANGE (do NOT cluster in 70-80):
+  POOR (15-30):
+  - Proof-texting Jeremiah 29:11 as a personal prosperity promise = Biblical Accuracy 15-25
+  - Sermon is mostly anecdotes, pop culture, and personal stories with a few verses sprinkled in = Time in the Word 10-25
+  - Announcing a passage then never teaching it = Passage Focus 5-15
+  MID-RANGE (45-65) — most sermons should NOT score above this unless genuinely strong:
+  - References 5-8 verses correctly but never goes deeper than surface reading = Biblical Accuracy 50-60
+  - About half the sermon is biblical content, half is stories/illustrations = Time in the Word 45-55
+  - Stays mostly on topic but makes 3-4 extended tangents = Passage Focus 50-60
+  - Quotes scripture accurately but applies it generically without exegesis = Biblical Accuracy 55-65
+  GOOD (70-85):
+  - Solid exegesis of main passage with accurate cross-references = Biblical Accuracy 75-85
+  - Majority of sermon grounded in biblical exposition with purposeful illustrations = Time in the Word 70-80
+  EXCELLENT (85-95):
+  - Deep verse-by-verse exposition with Greek/Hebrew word study = 85-95 across all three
+
+METHODOLOGY: First list specific observations and evidence from the transcript, THEN derive scores from that evidence. Do not pick a score first and justify it afterward.
 
 Be rigorous. Check whether each scripture reference is used in its proper context.
 
@@ -237,25 +262,50 @@ def pass2_structure(input_data):
             {"role": "system", "content": """You are a sermon structure analyst. Evaluate against these rubrics and return JSON.
 
 CLARITY (10%): Logical flow, clear transitions, identifiable structure, accessible language.
-APPLICATION (10%): Practical takeaways, "so what?" moments, imperative language, specificity.
-ENGAGEMENT (10%): Rhetorical variety, audience connection, illustration quality, content pacing.
+  KEY DISCRIMINATING QUESTIONS — answer these before scoring:
+  - Could a listener state the single main point of this sermon? If not, score below 60.
+  - Does each section clearly advance the argument, or do sections feel disconnected?
+  - Are transitions explicit (speaker signals movement) or implicit (listener figures it out)?
+  - Is there a clear introduction-body-conclusion arc?
 
-SCORING SCALE — use the FULL 0-100 range, not just 40-90:
+APPLICATION (10%): Practical takeaways, "so what?" moments, imperative language, specificity.
+  KEY DISCRIMINATING QUESTIONS:
+  - Are applications SPECIFIC (name a concrete action, situation, or change) or VAGUE ("love more", "pray more", "trust God")?
+  - Does the speaker connect biblical truth to the listener's actual Monday-through-Saturday life?
+  - Vague platitudes ("just trust God more") = Application 30-45, not 65-75.
+
+ENGAGEMENT (10%): Rhetorical variety, audience connection, illustration quality, content pacing.
+  KEY DISCRIMINATING QUESTIONS:
+  - Does the sermon create genuine tension that gets resolved, or is it flat throughout?
+  - Are illustrations specific and culturally relevant, or generic and interchangeable?
+  - Does the speaker demonstrate awareness of potential objections or counter-arguments?
+  - A sermon where every illustration could be swapped into any other sermon = below 65.
+
+SCORING SCALE — use the FULL 0-100 range, not just 70-85:
   0-15:  Incoherent — no structure, no application, no audience awareness
   15-30: Poor — rambling, loses place, vague platitudes instead of application
   30-50: Below average — some structure but disorganized, generic takeaways
-  50-70: Average — identifiable points with some gaps in flow or application
-  70-85: Good — clear structure, specific application, effective illustrations
+  50-65: Average — identifiable points but transitions are abrupt, applications are vague, illustrations are generic
+  65-75: Above average — clear structure with some gaps, decent but not compelling
+  75-85: Good — clear structure, specific application, effective illustrations
   85-95: Excellent — masterful flow, compelling and specific, deeply engaging
   95-100: Exceptional — historically significant sermon craft
 
-CALIBRATION EXAMPLES:
-- "Just be positive" / "trust the process" as application = Application 10-20
-- No identifiable structure, speaker loses place, random tangents = Clarity 15-25
-- Being funny/relatable does NOT rescue a sermon with no structure or substance — score Engagement on rhetorical craft and purposeful illustration, not just likability
-- A sermon that entertains but teaches nothing = Engagement 25-40 (entertainment ≠ engagement)
-- Humor and casual banter without purposeful rhetorical structure = Engagement 20-35
-- Engagement measures SERMON CRAFT (rhetorical questions, callbacks, tension/resolution, purposeful illustration) — NOT personality or humor alone"""},
+CALIBRATION EXAMPLES — MID-RANGE (most sermons land here):
+  Clarity 50-60: Clear 3-point structure but transitions are abrupt, listener has to infer connections between sections
+  Clarity 60-70: Identifiable structure with some explicit transitions, but the main point is buried or unclear
+  Application 40-55: Applications exist but are vague ("love more", "pray more") without specificity about HOW or WHEN
+  Application 55-70: Some specific applications mixed with generic ones; listener gets 1-2 concrete takeaways
+  Engagement 45-60: Good rhetorical questions but no tension/resolution arc, predictable pacing, generic illustrations
+  Engagement 60-70: Some effective moments but overall flat — no sustained narrative arc or compelling build
+
+CALIBRATION EXAMPLES — EXTREMES:
+  Poor: "Just be positive" / "trust the process" as application = Application 10-20
+  Poor: No identifiable structure, speaker loses place, random tangents = Clarity 15-25
+  Poor: Being funny/relatable does NOT rescue a sermon with no structure or substance — Engagement 25-40
+  Excellent: Masterful rhetorical arc with specific, culturally relevant illustrations that serve the text = Engagement 85-95
+
+METHODOLOGY: First list specific observations from the transcript, THEN derive scores. Do not pick a score first."""},
             {"role": "user", "content": f"""Evaluate this sermon transcript:
 
 {transcript}
@@ -300,22 +350,31 @@ def pass3_delivery(input_data):
 
 Audio metric guide: Pitch std >40Hz=expressive, <20Hz=monotone. Pitch range >300Hz=very dynamic. Intensity range >60dB=strong volume variation. Pauses >15/min=deliberate, <5/min=rushed. WPM 120-150=deliberate, 150-170=conversational, >170=fast.
 
-SCORING SCALE — use the FULL 0-100 range, not just 40-90:
+SCORING SCALE — use the FULL 0-100 range:
   0-15:  Unlistenable — constant filler, monotone, no vocal control
   15-30: Poor — excessive filler words, flat delivery, no intentional pacing
   30-50: Below average — some expression but lacks confidence or vocal variety
-  50-70: Average — competent delivery with room for improvement
-  70-85: Good — confident, expressive, intentional pacing
+  50-65: Average — competent but unremarkable; some vocal variety, occasional filler, adequate pacing
+  65-75: Above average — generally confident with some dynamic moments but inconsistent
+  75-85: Good — confident, expressive, intentional pacing
   85-95: Excellent — commanding presence, masterful vocal dynamics
   95-100: Exceptional — Spurgeon/MLK-tier oratory
 
-CALIBRATION:
-- A casual, conversational tone with frequent filler words and no rhetorical craft = Delivery 25-40, not 55-65
+CALIBRATION — MID-RANGE (most sermons):
+  Delivery 50-60: Adequate pacing, occasional filler words, pitch variation exists but is not purposeful
+  Delivery 60-70: Generally confident, some intentional pauses, but vocal dynamics are inconsistent
+  Emotional Range 45-60: Speaker has some tonal variation but stays mostly in one register (e.g., always upbeat or always serious)
+  Emotional Range 60-70: Noticeable shifts between 2 registers but lacks the full spectrum of gravity/joy/urgency/tenderness
+
+CALIBRATION — EXTREMES:
+- A casual, conversational tone with frequent filler words and no rhetorical craft = Delivery 25-40
 - TTS/robotic audio with no natural inflection = Delivery 15-30
 - Emotional Range measures PURPOSEFUL tonal variation in service of the sermon's message — not just "the speaker has energy"
 - A speaker who is uniformly casual/jokey with no gravity, urgency, tenderness, or conviction = Emotional Range 20-35
 - Emotional Range requires CONTRAST: moving between gravity and joy, urgency and tenderness, conviction and compassion
-- A monotone or single-register delivery (even if energetic) = Emotional Range 15-30"""
+- A monotone or single-register delivery (even if energetic) = Emotional Range 15-30
+
+METHODOLOGY: First describe what you observe in the audio metrics and transcript, THEN derive scores."""
         audio_section = f"""AUDIO METRICS:
 - Pitch: {audio['pitchMeanHz']}Hz mean, {audio['pitchStdHz']}Hz std, {audio['pitchRangeHz']}Hz range
 - Volume: {audio['intensityMeanDb']}dB mean, {audio['intensityRangeDb']}dB range
@@ -655,7 +714,7 @@ def rescore_sermon(input_data):
     sermon_type = classification["sermonType"]
     confidence = classification["confidence"]
     raw_scores = {**pass1, **pass2, **pass3}
-    categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
+    categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence, audio_available=audio_metrics is not None)
     composite = compute_composite(categories)
 
     # Re-classify segments if only 1 exists (broken text uploads)

@@ -9,7 +9,7 @@ Field names use camelCase to match the frontend-spec.md API contract.
 """
 
 # Pipeline version — bump when models or scoring prompts change
-PIPELINE_VERSION = "2026-03-09a"  # pass4 enrichment: LLM-based biblical languages + church history
+PIPELINE_VERSION = "2026-03-10a"  # scoring calibration: mid-range anchors, discriminating rubrics, conditional Passage Focus, text-only caps
 SCORING_MODELS = {
     "pass1_biblical": "o4-mini",
     "pass2_structure": "gpt-5-mini",
@@ -103,8 +103,11 @@ def compute_composite(categories):
     return raw
 
 
-def normalize_scores(raw_scores, sermon_type, confidence):
+def normalize_scores(raw_scores, sermon_type, confidence, audio_available=True):
     """Apply sermon-type normalization with tiered confidence (POC #10).
+
+    Also caps Delivery at 75 and Emotional Range at 80 for text-only sermons
+    to prevent inflated scores without audio evidence.
 
     Returns (categories dict, normalization_applied str).
     """
@@ -119,13 +122,19 @@ def normalize_scores(raw_scores, sermon_type, confidence):
         multiplier = 0.0
         applied = "none"
 
+    # Text-only caps (Issue 4: prevent inflated delivery/ER without audio)
+    TEXT_ONLY_CAPS = {"delivery": 75, "emotionalRange": 80} if not audio_available else {}
+
     adjustments = NORM_ADJUSTMENTS.get(sermon_type, {})
     categories = {}
     for key in CATEGORY_WEIGHTS:
         score = raw_scores[key]["score"]
         adj = adjustments.get(key, 0) * multiplier
+        final = min(100, round(score + adj))
+        if key in TEXT_ONLY_CAPS:
+            final = min(final, TEXT_ONLY_CAPS[key])
         categories[key] = {
-            "score": min(100, round(score + adj)),
+            "score": final,
             "weight": CATEGORY_WEIGHTS[key],
             "reasoning": raw_scores[key]["reasoning"],
         }
