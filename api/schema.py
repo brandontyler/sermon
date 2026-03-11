@@ -9,7 +9,7 @@ Field names use camelCase to match the frontend-spec.md API contract.
 """
 
 # Pipeline version — bump when models or scoring prompts change
-PIPELINE_VERSION = "2026-03-10b"  # tighten multi-passage Passage Focus: penalize cite-then-story pattern
+PIPELINE_VERSION = "2026-03-11a"  # selective per-pass rescore with auto-hash staleness detection
 SCORING_MODELS = {
     "pass1_biblical": "o4-mini",
     "pass2_structure": "gpt-5-mini",
@@ -17,6 +17,33 @@ SCORING_MODELS = {
     "pass4_enrichment": "gpt-5-nano",
     "classification": "gpt-5-nano",
 }
+
+# ─────────────────────────────────────────────
+#  Per-Pass Version Hashing (sermon-311)
+# ─────────────────────────────────────────────
+# Auto-detect which passes are stale by hashing prompt template + model.
+# PASS_HASHES is populated at import time by activities.py after prompts are defined.
+
+import hashlib as _hashlib
+
+def pass_hash(prompt_template: str, model: str) -> str:
+    """Hash a prompt template + model name to detect changes."""
+    return _hashlib.sha256(f"{model}:{prompt_template}".encode()).hexdigest()[:12]
+
+# Populated by activities.py register_pass_hashes()
+PASS_HASHES = {}
+
+# Pass-to-category mapping for selective rescore
+PASS_CATEGORIES = {
+    "pass1": ["biblicalAccuracy", "timeInTheWord", "passageFocus"],
+    "pass2": ["clarity", "application", "engagement"],
+    "pass3": ["delivery", "emotionalRange"],
+}
+
+def detect_stale_passes(sermon_doc):
+    """Compare stored pass hashes vs current. Returns list of stale pass names."""
+    stored = sermon_doc.get("passVersions", {})
+    return [name for name, current in PASS_HASHES.items() if stored.get(name) != current]
 
 CATEGORY_WEIGHTS = {
     "biblicalAccuracy": 25,

@@ -27,6 +27,7 @@ export default function SermonDetailClient() {
   const [spanishText, setSpanishText] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [churchUrl, setChurchUrl] = useState<{ name: string; url: string } | null>(null);
 
   // Resolve ID from URL on mount (avoids useParams "placeholder" race).
   // UUID guard prevents bogus API calls when SWA routing serves this page
@@ -90,6 +91,14 @@ export default function SermonDetailClient() {
     return () => { active = false; clearTimeout(timeoutId); };
   }, [id]);
 
+  useEffect(() => {
+    if (!sermon?.pastor) return;
+    fetch(apiUrl("/api/churches")).then(r => r.json()).then((churches: { name: string; url?: string; pastors: { name: string }[] }[]) => {
+      const match = churches.find(c => c.pastors.some(p => p.name === sermon.pastor));
+      if (match?.url) setChurchUrl({ name: match.name, url: /^https?:\/\//i.test(match.url) ? match.url : `https://${match.url}` });
+    }).catch(() => {});
+  }, [sermon?.pastor]);
+
   if (loading) return <Shell>Loading...</Shell>;
   if (error) return <Shell>{error}</Shell>;
   if (!sermon) return <Shell>Sermon not found.</Shell>;
@@ -105,6 +114,9 @@ export default function SermonDetailClient() {
       <p className="text-sm text-gray-500 mt-1">
         {sermon.pastor && (
           <><Link href={`/dashboard?pastor=${encodeURIComponent(sermon.pastor)}`} className="hover:text-blue-600 hover:underline">{sermon.pastor}</Link> · </>
+        )}
+        {churchUrl && (
+          <><a href={churchUrl.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{churchUrl.name}</a> · </>
         )}
         {[
           sermon.date && new Date(sermon.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),

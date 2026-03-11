@@ -75,8 +75,8 @@ export default function SermonsPage() {
         <h1 className="text-lg font-semibold text-gray-900">PSR — Pastor Sermon Rating</h1>
         <Link href="/" className="text-sm text-blue-600 hover:underline">Upload →</Link>
       </div>
-
-      <div className="mb-4">
+      <div className="flex gap-4 mb-4">
+        <Link href="/churches" className="text-sm text-blue-600 hover:underline">Find a Church</Link>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}

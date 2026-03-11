@@ -256,27 +256,21 @@ function DashboardInner() {
     }
   }
 
-  // Illustration classification from transcripts
+  // Illustration counts from Pass 4 enrichment (LLM-classified)
   const illustrationCounts = { "Personal Story": 0, "Historical": 0, "Hypothetical": 0, "Humor": 0 };
+  let hasEnrichmentIllustrations = false;
   for (const s of detailedRecent) {
-    const text = (details[s.id] as unknown as { transcript?: { fullText?: string } })?.transcript?.fullText || "";
-    if (!text) continue;
-    const lower = text.toLowerCase();
-    // Personal story
-    const personal = (lower.match(/\b(i remember|my wife|my husband|my family|my kids|my father|my mother|my dad|my mom|when i was|i grew up|i recall|in my life|personally|my own experience|i once|let me tell you|true story|i was sitting|my friend)\b/g) || []).length;
-    // Historical
-    const historical = (lower.match(/\b(in the \d{1,2}(?:st|nd|rd|th) century|during the|in ancient|historically|in history|years ago|back in \d{3,4}|the roman|the early church|church history|reformation|world war|civil war)\b/g) || []).length;
-    // Hypothetical
-    const hypothetical = (lower.match(/\b(imagine|what if|suppose|let's say|picture this|think about|consider this|hypothetically|if you were|pretend)\b/g) || []).length;
-    // Humor
-    const humor = (lower.match(/\b(laugh|funny|joke|hilarious|humor|comedic|cracked up|that's a good one|you guys are laughing)\b/g) || []).length;
-    illustrationCounts["Personal Story"] += personal;
-    illustrationCounts["Historical"] += historical;
-    illustrationCounts["Hypothetical"] += hypothetical;
-    illustrationCounts["Humor"] += humor;
+    const d = details[s.id] as unknown as { enrichment?: { illustrations?: { byType?: Record<string, unknown[]> } } };
+    const byType = d?.enrichment?.illustrations?.byType;
+    if (!byType) continue;
+    hasEnrichmentIllustrations = true;
+    illustrationCounts["Personal Story"] += (byType.personalStory || []).length;
+    illustrationCounts["Historical"] += (byType.historical || []).length;
+    illustrationCounts["Hypothetical"] += (byType.hypothetical || []).length;
+    illustrationCounts["Humor"] += (byType.humor || []).length;
   }
   const illustrationColors: Record<string, string> = { "Personal Story": "#3b82f6", "Historical": "#8b5cf6", "Hypothetical": "#f59e0b", "Humor": "#22c55e" };
-  const hasIllustrations = Object.values(illustrationCounts).some((v) => v > 0);
+  const hasIllustrations = hasEnrichmentIllustrations && Object.values(illustrationCounts).some((v) => v > 0);
 
   if (loading) return <p className="text-gray-400 text-sm text-center mt-20">Loading...</p>;
 
@@ -319,7 +313,7 @@ function DashboardInner() {
               data={Object.entries(illustrationCounts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value, color: illustrationColors[name] || "#9ca3af" }))}
             />
           ) : (
-            <p className="text-xs text-gray-400 p-4">Loading illustration data...</p>
+            <p className="text-xs text-gray-400 p-4">{hasEnrichmentIllustrations ? "No illustrations detected" : "Rescore sermons to enable illustration tracking"}</p>
           )}
         </div>
         <div className="bg-white border border-gray-200 rounded-lg p-3">

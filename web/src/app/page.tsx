@@ -157,56 +157,20 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-4">
-      <div className="w-full max-w-[400px] text-center">
-        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+    <div className="min-h-screen p-4">
+      <div className="flex items-start gap-6 mt-6 mb-6 max-w-[900px] mx-auto">
+        <div className="shrink-0">
+          <h1 className="text-xl text-gray-900 font-semibold leading-tight">PSR</h1>
+          <p className="text-xs text-gray-500">Pastor Sermon Rating</p>
+        </div>
+        <p className="text-sm text-gray-600 leading-relaxed text-center flex-1">
           Welcome to a new way of strengthening your voice in ministry. Our platform provides pastors and speakers with thoughtful, data‑driven insights by analyzing uploaded sermon audio and comparing it against a carefully trained communication model. The goal isn&apos;t to critique or diminish—it&apos;s to illuminate strengths, highlight opportunities for growth, and support every pastor in delivering clearer, more impactful messages. With a warm, encouraging approach, we help communicators refine their craft so their words can reach hearts with even greater clarity and purpose.
         </p>
-        <h1 className="text-xl text-gray-900 font-semibold">PSR</h1>
-        <p className="text-sm text-gray-500 mb-8">Pastor Sermon Rating</p>
+      </div>
+      <div className="w-full max-w-[400px] mx-auto text-center">
 
         {!file && mode !== "youtube" ? (
           <div className="space-y-4">
-            {/* Audio upload */}
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="Upload sermon audio file. Drop file here or press Enter to browse."
-              className="border-2 border-dashed border-gray-200 rounded-lg p-8 cursor-pointer hover:border-gray-300 focus:border-blue-400 focus:outline-none transition-colors"
-              onClick={() => audioRef.current?.click()}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); audioRef.current?.click(); } }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleAudioFile(f); }}
-            >
-              <p className="text-gray-500">🎙️ Drop audio file here</p>
-              <p className="text-gray-500">or click to browse</p>
-              <p className="text-xs text-gray-400 mt-2">MP3, WAV, M4A · max 1hr</p>
-              <input ref={audioRef} type="file" accept=".mp3,.wav,.m4a" aria-hidden="true" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAudioFile(f); }} />
-            </div>
-
-            <p className="text-xs text-gray-400">— or —</p>
-
-            {/* Text upload */}
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="Upload sermon text transcript. Drop file here or press Enter to browse."
-              className="border-2 border-dashed border-gray-200 rounded-lg p-8 cursor-pointer hover:border-gray-300 focus:border-blue-400 focus:outline-none transition-colors"
-              onClick={() => textRef.current?.click()}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); textRef.current?.click(); } }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleTextFile(f); }}
-            >
-              <p className="text-gray-500">📄 Drop text transcript here</p>
-              <p className="text-gray-500">or click to browse</p>
-              <p className="text-xs text-gray-400 mt-2">TXT, DOCX, MD, RTF, ODT, HTML, CSV, XML · max 10MB</p>
-              <input ref={textRef} type="file" accept=".txt,.docx,.md,.rtf,.odt,.html,.htm,.csv,.xml" aria-hidden="true" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleTextFile(f); }} />
-            </div>
-
-            <p className="text-xs text-gray-400">— or —</p>
-
             {/* YouTube URL */}
             <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 transition-colors hover:border-gray-300">
               <p className="text-gray-500 mb-3">▶️ Paste a YouTube link</p>
@@ -251,6 +215,46 @@ export default function UploadPage() {
                 </button>
               )}
               <p className="text-xs text-gray-400 mt-2">Uses YouTube&apos;s captions · English only · Format: H:MM:SS</p>
+            </div>
+
+            <p className="text-xs text-gray-400">— or —</p>
+
+            {/* Audio upload */}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Upload sermon audio file. Drop file here or press Enter to browse."
+              className="border-2 border-dashed border-gray-200 rounded-lg p-8 cursor-pointer hover:border-gray-300 focus:border-blue-400 focus:outline-none transition-colors"
+              onClick={() => audioRef.current?.click()}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); audioRef.current?.click(); } }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleAudioFile(f); }}
+            >
+              <p className="text-gray-500">🎙️ Drop audio file here</p>
+              <p className="text-gray-500">or click to browse</p>
+              <p className="text-xs text-gray-400 mt-2">MP3, WAV, M4A · max 1hr</p>
+              <input ref={audioRef} type="file" accept=".mp3,.wav,.m4a" aria-hidden="true" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAudioFile(f); }} />
+            </div>
+
+            <p className="text-xs text-gray-400">— or —</p>
+
+            {/* Text upload */}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Upload sermon text transcript. Drop file here or press Enter to browse."
+              className="border-2 border-dashed border-gray-200 rounded-lg p-8 cursor-pointer hover:border-gray-300 focus:border-blue-400 focus:outline-none transition-colors"
+              onClick={() => textRef.current?.click()}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); textRef.current?.click(); } }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleTextFile(f); }}
+            >
+              <p className="text-gray-500">📄 Drop text transcript here</p>
+              <p className="text-gray-500">or click to browse</p>
+              <p className="text-xs text-gray-400 mt-2">TXT, DOCX, MD, RTF, ODT, HTML, CSV, XML · max 10MB</p>
+              <input ref={textRef} type="file" accept=".txt,.docx,.md,.rtf,.odt,.html,.htm,.csv,.xml" aria-hidden="true" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleTextFile(f); }} />
             </div>
           </div>
         ) : mode === "youtube" ? (
@@ -344,6 +348,9 @@ export default function UploadPage() {
 
         <Link href="/sermons" className="inline-block mt-8 text-sm text-blue-600 hover:underline">
           View All Sermons →
+        </Link>
+        <Link href="/churches" className="inline-block mt-2 ml-6 text-sm text-blue-600 hover:underline">
+          Find a Church →
         </Link>
       </div>
     </div>

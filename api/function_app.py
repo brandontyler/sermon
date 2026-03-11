@@ -17,6 +17,7 @@ from schema import (
     CATEGORY_WEIGHTS,
     PIPELINE_VERSION,
     SCORING_MODELS,
+    PASS_HASHES,
 )
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -927,6 +928,7 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "enrichment": enrichment,
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
+            "passVersions": PASS_HASHES,
         }
 
         yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
@@ -1099,6 +1101,7 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "enrichment": enrichment,
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
+            "passVersions": PASS_HASHES,
         }
 
         yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
@@ -1143,6 +1146,11 @@ async def admin_rescore(req: func.HttpRequest, starter: df.DurableOrchestrationC
     sermon_ids = body.get("sermonIds")
     rescore_all = body.get("all", False)
     older_than = body.get("olderThan")  # pipeline version date string
+    passes = body.get("passes")  # selective per-pass rescore: [1,2,3,4,"segments","summary","stale"]
+    stale_only = body.get("staleOnly", False)  # auto-detect stale passes
+
+    if stale_only:
+        passes = ["stale"]
 
     if not sermon_ids and not rescore_all:
         return _json_response({"error": "Provide sermonIds array or {\"all\": true}"}, 400)
@@ -1163,9 +1171,9 @@ async def admin_rescore(req: func.HttpRequest, starter: df.DurableOrchestrationC
     if not sermon_ids:
         return _json_response({"message": "No sermons to rescore", "count": 0})
 
-    instance_id = await starter.start_new("rescore_orchestrator", client_input={"sermonIds": sermon_ids})
-    log.info(f"[admin_rescore] Started rescore orchestrator {instance_id} for {len(sermon_ids)} sermons")
-    return _json_response({"instanceId": instance_id, "count": len(sermon_ids), "sermonIds": sermon_ids}, 202)
+    instance_id = await starter.start_new("rescore_orchestrator", client_input={"sermonIds": sermon_ids, "passes": passes})
+    log.info(f"[admin_rescore] Started rescore orchestrator {instance_id} for {len(sermon_ids)} sermons, passes={passes}")
+    return _json_response({"instanceId": instance_id, "count": len(sermon_ids), "sermonIds": sermon_ids, "passes": passes}, 202)
 
 
 @bp.orchestration_trigger(context_name="context")
@@ -1173,12 +1181,13 @@ def rescore_orchestrator(context: df.DurableOrchestrationContext):
     """Re-score sermons using existing transcripts. Skips transcription + Parselmouth."""
     input_data = context.get_input()
     sermon_ids = input_data["sermonIds"]
+    passes = input_data.get("passes")
 
     results = []
     for sermon_id in sermon_ids:
         try:
             result = yield context.call_activity_with_retry(
-                "activity_rescore_sermon", RETRY_LLM, {"sermonId": sermon_id}
+                "activity_rescore_sermon", RETRY_LLM, {"sermonId": sermon_id, "passes": passes}
             )
             results.append({"id": sermon_id, "ok": True, "newPsr": result.get("compositePsr")})
         except Exception as e:

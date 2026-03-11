@@ -105,3 +105,8 @@ export function scoreBgColor(score: number): string {
   if (score >= 60) return "bg-yellow-500";
   return "bg-red-500";
 }
+
+export function normalizeUrl(url: string): string {
+  if (!url) return url;
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}

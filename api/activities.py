@@ -163,6 +163,28 @@ def analyze_audio(input_data):
 #  LLM Scoring Passes (o4-mini / gpt-5-mini / gpt-5-nano)
 # ─────────────────────────────────────────────
 
+# Prompt template fingerprints for staleness detection (sermon-311).
+# We hash a short fingerprint string per pass (not the full prompt) so that
+# the hash only changes when the scoring logic actually changes.
+# Bump the fingerprint string whenever you edit the pass's prompt or model.
+_PASS_FINGERPRINTS = {
+    "pass1": "o4-mini:pass1_biblical:v2026-03-10b:calibration+passage-focus-conditional",
+    "pass2": "gpt-5-mini:pass2_structure:v2026-03-10b:calibration+discriminating-questions",
+    "pass3": "gpt-5-nano:pass3_delivery:v2026-03-10b:calibration+audio-metrics",
+    "pass4": "gpt-5-nano:pass4_enrichment:v2026-03-11a:illustrations-added",
+    "classify": "gpt-5-nano:classify_sermon:v2026-03-08a:begin-mid-end-sampling",
+    "segments": "gpt-5-nano:classify_segments:v2026-03-08a:batch-200",
+    "summary": "gpt-5-nano:generate_summary:v2026-03-10a:3-strengths-2-improvements",
+}
+
+def _register_pass_hashes():
+    from schema import pass_hash, PASS_HASHES
+    for name, fingerprint in _PASS_FINGERPRINTS.items():
+        model = fingerprint.split(":")[0]
+        PASS_HASHES[name] = pass_hash(fingerprint, model)
+
+_register_pass_hashes()
+
 def pass1_biblical(input_data):
     """Pass 1: Biblical Analysis via o4-mini.
 
@@ -446,8 +468,8 @@ def pass4_enrichment(input_data):
         model="gpt-5-nano",
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": """You analyze sermon transcripts for biblical language usage and church history references. Return JSON only."""},
-            {"role": "user", "content": f"""Analyze this sermon transcript for two things:
+            {"role": "system", "content": """You analyze sermon transcripts for biblical language usage, church history references, and illustration types. Return JSON only."""},
+            {"role": "user", "content": f"""Analyze this sermon transcript for three things:
 
 1. **Biblical language references** — Any time the speaker references, translates, or explains a word from Hebrew, Greek, or Aramaic. Include:
    - Explicit mentions ("the Greek word agape means...")
@@ -466,19 +488,35 @@ def pass4_enrichment(input_data):
    Do NOT count biblical figures (Paul, Peter, Moses) — only post-biblical history.
    Do NOT count secular political figures (presidents, politicians, generals), secular events (wars, elections, court cases), pop culture, or general world history unless the reference is specifically about their role in CHURCH history.
 
+3. **Illustrations** — Classify each illustration, anecdote, or example the speaker uses. Categories:
+   - "personalStory": Speaker shares from their own life (family, childhood, personal experiences, "I remember when...")
+   - "historical": References to historical events, figures, or eras (non-biblical, non-church-history — e.g. scientific discoveries, cultural events)
+   - "hypothetical": Thought experiments, "imagine if...", "what if...", "picture this" scenarios
+   - "humor": Jokes, funny stories, comedic moments that get laughs or are clearly intended as humor
+   Only count ACTUAL illustrations — not passing mentions. Each must be a distinct story, example, or scenario the speaker develops for at least a sentence or two.
+
 Return JSON:
 {{
   "biblicalLanguages": {{
-    "count": <number of distinct references>,
+    "count": <number>,
     "references": [
-      {{"quote": "<short excerpt from transcript>", "language": "Hebrew|Greek|Aramaic", "term": "<the foreign term>"}}
+      {{"quote": "<short excerpt>", "language": "Hebrew|Greek|Aramaic", "term": "<the foreign term>"}}
     ]
   }},
   "churchHistory": {{
-    "count": <number of distinct references>,
+    "count": <number>,
     "references": [
-      {{"quote": "<short excerpt from transcript>", "figure_or_event": "<name>", "era": "<era or century>"}}
+      {{"quote": "<short excerpt>", "figure_or_event": "<name>", "era": "<era or century>"}}
     ]
+  }},
+  "illustrations": {{
+    "total": <number>,
+    "byType": {{
+      "personalStory": [{{"quote": "<short excerpt>", "context": "<1-sentence summary>"}}],
+      "historical": [{{"quote": "<short excerpt>", "context": "<1-sentence summary>"}}],
+      "hypothetical": [{{"quote": "<short excerpt>", "context": "<1-sentence summary>"}}],
+      "humor": [{{"quote": "<short excerpt>", "context": "<1-sentence summary>"}}]
+    }}
   }}
 }}
 
@@ -490,6 +528,7 @@ TRANSCRIPT:
     raw = validate_flat_response(resp.choices[0].message.content, {
         "biblicalLanguages": {"count": 0, "references": []},
         "churchHistory": {"count": 0, "references": []},
+        "illustrations": {"total": 0, "byType": {"personalStory": [], "historical": [], "hypothetical": [], "humor": []}},
     })
 
     # Ensure counts match reference arrays
@@ -498,7 +537,12 @@ TRANSCRIPT:
     bl["count"] = len(bl.get("references", []))
     ch["count"] = len(ch.get("references", []))
 
-    return {"enrichment": {"biblicalLanguages": bl, "churchHistory": ch}}
+    ill = raw.get("illustrations", {})
+    by_type = ill.get("byType", {})
+    ill["total"] = sum(len(by_type.get(k, [])) for k in ("personalStory", "historical", "hypothetical", "humor"))
+    ill["byType"] = by_type
+
+    return {"enrichment": {"biblicalLanguages": bl, "churchHistory": ch, "illustrations": ill}}
 
 
 # ─────────────────────────────────────────────
@@ -666,13 +710,19 @@ def generate_summary(input_data):
 def rescore_sermon(input_data):
     """Re-score a sermon using current models on its existing transcript.
 
-    Skips transcription and Parselmouth — only re-runs LLM passes.
-    Preserves previous scores in a previousScores array for audit trail.
+    Supports selective per-pass rescore via input_data["passes"]:
+      - None or omitted: full rescore (all passes)
+      - [1,2,3]: re-run scoring passes only
+      - [4]: re-run enrichment only
+      - ["segments"]: re-classify segments only
+      - ["summary"]: re-generate summary only
+      - ["stale"]: auto-detect stale passes and re-run only those
 
-    Input: {"sermonId": str}
-    Output: {"ok": True, "compositePsr": float}
+    Input: {"sermonId": str, "passes": list|None}
+    Output: {"ok": True, "compositePsr": float, "passesRun": list}
     """
-    from schema import normalize_scores, compute_composite, PIPELINE_VERSION, SCORING_MODELS
+    from schema import (normalize_scores, compute_composite, PIPELINE_VERSION,
+                        SCORING_MODELS, PASS_HASHES, PASS_CATEGORIES, detect_stale_passes)
     import datetime
 
     container = _cosmos_client()
@@ -684,111 +734,179 @@ def rescore_sermon(input_data):
 
     transcript = doc["transcript"]["fullText"]
     audio_metrics = doc.get("audioMetrics")
-    wpm = doc.get("categories", {}).get("delivery", {}).get("score", 0)
-    # Recover WPM from transcript word count and duration
     duration = doc.get("duration") or 0
     word_count = len(transcript.split())
     wpm = round(word_count / (duration / 60), 1) if duration > 0 else 130
 
-    # Run 3 scoring passes + classification
-    pass1 = pass1_biblical({"transcript": transcript})
-    pass2 = pass2_structure({"transcript": transcript})
-    pass3 = pass3_delivery({
-        "transcript": transcript,
-        "audioMetrics": audio_metrics or _default_audio(),
-        "wpm": wpm,
-        "audioAvailable": audio_metrics is not None,
-    })
-    classification = classify_sermon({
-        "transcript": transcript,
-        "userTitle": doc.get("title"),
-        "userPastor": doc.get("pastor"),
-    })
-
-    # Pass 4: enrichment (non-critical)
-    try:
-        enrichment_result = pass4_enrichment({"transcript": transcript})
-        enrichment = enrichment_result.get("enrichment")
-    except Exception as e:
-        enrichment = None
-        log.warning(f"[rescore] {sermon_id}: pass4 enrichment failed ({e}), skipping")
-
-    sermon_type = classification["sermonType"]
-    confidence = classification["confidence"]
-    raw_scores = {**pass1, **pass2, **pass3}
-    categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence, audio_available=audio_metrics is not None)
-    composite = compute_composite(categories)
-
-    # Re-classify segments if only 1 exists (broken text uploads)
-    existing_segs = doc.get("transcript", {}).get("segments", [])
-    if len(existing_segs) <= 3 and word_count > 200:
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+', transcript.strip())
-        chunks, current = [], []
-        wc = 0
-        for s in sentences:
-            current.append(s)
-            wc += len(s.split())
-            if wc >= 100:
-                chunks.append(" ".join(current))
-                current, wc = [], 0
-        if current:
-            chunks.append(" ".join(current))
-        if len(chunks) > 3:
-            dur = doc.get("duration") or (word_count / 140 * 60)
-            seg_dur = dur / len(chunks)
-            rebuilt = [{"start": round(i * seg_dur, 2), "end": round((i + 1) * seg_dur, 2), "text": c, "type": "teaching"} for i, c in enumerate(chunks)]
-            try:
-                classified = classify_segments({"segments": rebuilt})
-            except Exception as e:
-                classified = rebuilt
-                log.warning(f"[rescore] {sermon_id}: segment reclassification failed ({e})")
-        else:
-            classified = existing_segs
+    # Determine which passes to run
+    requested = input_data.get("passes")
+    if requested is None:
+        run_passes = {"pass1", "pass2", "pass3", "pass4", "classify", "segments", "summary"}
     else:
-        # Re-classify existing segments with current model
+        run_passes = set()
+        for p in requested:
+            if p == "stale":
+                run_passes.update(detect_stale_passes(doc))
+            elif isinstance(p, int):
+                run_passes.add(f"pass{p}")
+            else:
+                run_passes.add(p)
+
+    if not run_passes:
+        return {"ok": True, "compositePsr": doc.get("compositePsr"), "passesRun": [], "message": "all passes up to date"}
+
+    log.info(f"[rescore] {sermon_id}: running passes {sorted(run_passes)}")
+
+    existing_cats = doc.get("categories", {})
+    scoring_changed = any(p in run_passes for p in ("pass1", "pass2", "pass3"))
+
+    # --- Scoring passes (1-3): run requested, keep existing for others ---
+    raw_scores = {}
+    if "pass1" in run_passes:
+        raw_scores.update(pass1_biblical({"transcript": transcript}))
+    else:
+        for k in PASS_CATEGORIES["pass1"]:
+            raw_scores[k] = {"score": existing_cats.get(k, {}).get("score", 0),
+                             "reasoning": existing_cats.get(k, {}).get("reasoning", "")}
+
+    if "pass2" in run_passes:
+        raw_scores.update(pass2_structure({"transcript": transcript}))
+    else:
+        for k in PASS_CATEGORIES["pass2"]:
+            raw_scores[k] = {"score": existing_cats.get(k, {}).get("score", 0),
+                             "reasoning": existing_cats.get(k, {}).get("reasoning", "")}
+
+    if "pass3" in run_passes:
+        raw_scores.update(pass3_delivery({
+            "transcript": transcript,
+            "audioMetrics": audio_metrics or _default_audio(),
+            "wpm": wpm,
+            "audioAvailable": audio_metrics is not None,
+        }))
+    else:
+        for k in PASS_CATEGORIES["pass3"]:
+            raw_scores[k] = {"score": existing_cats.get(k, {}).get("score", 0),
+                             "reasoning": existing_cats.get(k, {}).get("reasoning", "")}
+
+    # --- Classification (needed if scoring changed or explicitly requested) ---
+    if "classify" in run_passes or scoring_changed:
+        classification = classify_sermon({
+            "transcript": transcript,
+            "userTitle": doc.get("title"),
+            "userPastor": doc.get("pastor"),
+        })
+        run_passes.add("classify")
+    else:
+        classification = {"sermonType": doc.get("sermonType", "topical"),
+                          "confidence": doc.get("classificationConfidence", 50)}
+
+    # --- Normalize + composite (only if scoring changed) ---
+    if scoring_changed:
+        categories, norm_applied = normalize_scores(
+            raw_scores, classification["sermonType"], classification["confidence"],
+            audio_available=audio_metrics is not None)
+        composite = compute_composite(categories)
+    else:
+        categories = existing_cats
+        norm_applied = doc.get("normalizationApplied", "none")
+        composite = doc.get("compositePsr")
+
+    # --- Pass 4: enrichment ---
+    if "pass4" in run_passes:
         try:
-            classified = classify_segments({"segments": existing_segs})
+            enrichment = pass4_enrichment({"transcript": transcript}).get("enrichment")
         except Exception as e:
-            classified = existing_segs
+            enrichment = doc.get("enrichment")
+            log.warning(f"[rescore] {sermon_id}: pass4 failed ({e}), keeping existing")
+    else:
+        enrichment = doc.get("enrichment")
+
+    # --- Segments ---
+    existing_segs = doc.get("transcript", {}).get("segments", [])
+    if "segments" in run_passes:
+        if len(existing_segs) <= 3 and word_count > 200:
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', transcript.strip())
+            chunks, current = [], []
+            wc = 0
+            for s in sentences:
+                current.append(s)
+                wc += len(s.split())
+                if wc >= 100:
+                    chunks.append(" ".join(current))
+                    current, wc = [], 0
+            if current:
+                chunks.append(" ".join(current))
+            if len(chunks) > 3:
+                dur = doc.get("duration") or (word_count / 140 * 60)
+                seg_dur = dur / len(chunks)
+                existing_segs = [{"start": round(i * seg_dur, 2), "end": round((i + 1) * seg_dur, 2),
+                                  "text": c, "type": "teaching"} for i, c in enumerate(chunks)]
+        try:
+            classified_segs = classify_segments({"segments": existing_segs})
+        except Exception as e:
+            classified_segs = existing_segs
             log.warning(f"[rescore] {sermon_id}: segment reclassification failed ({e})")
+    else:
+        classified_segs = existing_segs
 
-    summary = generate_summary({"categories": categories, "sermonType": sermon_type})
+    # --- Summary (only if scoring changed or explicitly requested) ---
+    if "summary" in run_passes or scoring_changed:
+        summary = generate_summary({"categories": categories,
+                                    "sermonType": classification["sermonType"]})
+        run_passes.add("summary")
+    else:
+        summary = {"strengths": doc.get("strengths"), "improvements": doc.get("improvements"),
+                   "summary": doc.get("summary")}
 
-    # Preserve old scores
+    # --- Update pass version hashes ---
+    pass_versions = doc.get("passVersions", {})
+    for p in run_passes:
+        if p in PASS_HASHES:
+            pass_versions[p] = PASS_HASHES[p]
+
+    # --- Preserve old scores (only if scoring changed) ---
     previous = doc.get("previousScores", [])
-    previous.append({
-        "compositePsr": doc.get("compositePsr"),
-        "categories": doc.get("categories"),
-        "pipelineVersion": doc.get("pipelineVersion", "pre-tracking"),
-        "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
-    })
+    if scoring_changed:
+        previous.append({
+            "compositePsr": doc.get("compositePsr"),
+            "categories": doc.get("categories"),
+            "pipelineVersion": doc.get("pipelineVersion", "pre-tracking"),
+            "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
+        })
 
-    update_sermon({
-        "sermonId": sermon_id,
-        "updates": {
+    # --- Build update payload ---
+    updates = {
+        "passVersions": pass_versions,
+        "pipelineVersion": PIPELINE_VERSION,
+        "scoringModels": SCORING_MODELS,
+        "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+    if scoring_changed:
+        updates.update({
             "compositePsr": composite,
             "categories": categories,
-            "sermonType": sermon_type,
-            "classificationConfidence": confidence,
+            "sermonType": classification["sermonType"],
+            "classificationConfidence": classification["confidence"],
             "normalizationApplied": norm_applied,
             "rawScores": {k: raw_scores[k]["score"] for k in raw_scores},
             "strengths": summary.get("strengths"),
             "improvements": summary.get("improvements"),
             "summary": summary.get("summary"),
-            "pipelineVersion": PIPELINE_VERSION,
-            "scoringModels": SCORING_MODELS,
-            "enrichment": enrichment,
-            "transcript": {
-                "fullText": transcript,
-                "segments": classified,
-            },
             "previousScores": previous,
-            "rescoredAt": datetime.datetime.utcnow().isoformat() + "Z",
-        },
-    })
+        })
+    if "pass4" in run_passes:
+        updates["enrichment"] = enrichment
+    if "segments" in run_passes:
+        updates["transcript"] = {"fullText": transcript, "segments": classified_segs}
+    if not scoring_changed and "summary" in run_passes:
+        updates.update({"strengths": summary.get("strengths"),
+                        "improvements": summary.get("improvements"),
+                        "summary": summary.get("summary")})
 
-    return {"ok": True, "compositePsr": composite}
+    update_sermon({"sermonId": sermon_id, "updates": updates})
+
+    return {"ok": True, "compositePsr": composite, "passesRun": sorted(run_passes)}
 
 
 def _default_audio():
