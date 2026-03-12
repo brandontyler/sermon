@@ -20,7 +20,9 @@ interface Church { id: string; name: string; address: string; city: string; stat
 export default function MapView({ churches }: { churches: Church[] }) {
   const center: [number, number] = churches.length === 1
     ? [churches[0].lat, churches[0].lng]
-    : [37.5, -96]; // center of US
+    : churches.length > 1
+    ? [churches[0].lat, churches[0].lng]
+    : [37.5, -96];
   const zoom = churches.length === 1 ? 12 : 4;
 
   return (

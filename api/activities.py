@@ -116,6 +116,7 @@ def analyze_audio(input_data):
     Output: audio metrics dict
     """
     import parselmouth
+    import subprocess
 
     blob = _blob_client(input_data["blobUrl"])
     audio_bytes = blob.download_blob().readall()
@@ -125,10 +126,26 @@ def analyze_audio(input_data):
         f.write(audio_bytes)
         tmp_path = f.name
 
+    # Downsample to mono 16kHz WAV to reduce memory ~5x (prevents OOM on Consumption plan)
+    down_path = tmp_path + ".16k.wav"
     try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_path, "-ac", "1", "-ar", "16000", down_path],
+            capture_output=True, timeout=120,
+        )
+        os.unlink(tmp_path)
+        snd = parselmouth.Sound(down_path)
+    except Exception:
+        # Fallback: try original file if ffmpeg fails
+        down_path = None
         snd = parselmouth.Sound(tmp_path)
     finally:
-        os.unlink(tmp_path)
+        for p in [tmp_path, down_path]:
+            if p:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
 
     pitch = snd.to_pitch(time_step=0.1)
     intensity = snd.to_intensity(time_step=0.1)
@@ -920,6 +937,95 @@ def _default_audio():
 # ─────────────────────────────────────────────
 #  Cosmos DB Update
 # ─────────────────────────────────────────────
+
+def ensure_church(input_data):
+    """Auto-create a church entry if the pastor doesn't have one.
+
+    Uses LLM to look up the pastor's church name, city, and state.
+    Input: {"pastor": str}
+    Output: {"ok": bool, "church": str|None, "created": bool}
+    """
+    from azure.cosmos import CosmosClient
+
+    pastor = input_data.get("pastor")
+    if not pastor:
+        return {"ok": True, "church": None, "created": False}
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    db = cosmos.get_database_client("psr")
+    try:
+        church_container = db.create_container_if_not_exists(
+            id="churches", partition_key={"paths": ["/id"], "kind": "Hash"},
+        )
+    except Exception:
+        church_container = db.get_container_client("churches")
+
+    # Check if pastor already has a church
+    existing = list(church_container.query_items(
+        "SELECT c.name FROM c WHERE ARRAY_CONTAINS(c.pastors, {'name': @p}, true)",
+        parameters=[{"name": "@p", "value": pastor}],
+        enable_cross_partition_query=True,
+    ))
+    if existing:
+        return {"ok": True, "church": existing[0]["name"], "created": False}
+
+    # Ask LLM to identify the church
+    import json as _json
+    client = _openai_client()
+    resp = client.chat.completions.create(
+        model="gpt-5-nano",
+        messages=[
+            {"role": "system", "content": "You identify which church a pastor serves at. Return JSON only."},
+            {"role": "user", "content": f"""Who is pastor "{pastor}"? Return their primary church.
+
+Return JSON: {{"name": "<church name>", "city": "<city>", "state": "<2-letter state>", "url": "<church website or null>", "confidence": "<high|medium|low>"}}
+
+If you cannot confidently identify them, return: {{"name": null, "confidence": "low"}}"""},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+
+    try:
+        result = _json.loads(resp.choices[0].message.content)
+    except Exception:
+        log.warning(f"[ensure_church] LLM returned unparseable response for {pastor}")
+        return {"ok": True, "church": None, "created": False}
+
+    if not result.get("name") or result.get("confidence") == "low":
+        log.info(f"[ensure_church] Could not identify church for {pastor}")
+        return {"ok": True, "church": None, "created": False}
+
+    # Create the church
+    church_id = result["name"].lower().replace(" ", "-").replace("'", "")
+    doc = {
+        "id": church_id,
+        "name": result["name"],
+        "city": result.get("city", ""),
+        "state": result.get("state", ""),
+        "url": result.get("url") or "",
+        "pastors": [{"name": pastor}],
+        "autoCreated": True,
+    }
+
+    try:
+        church_container.create_item(doc)
+        log.info(f"[ensure_church] Auto-created church '{result['name']}' for {pastor}")
+        return {"ok": True, "church": result["name"], "created": True}
+    except Exception as e:
+        if "Conflict" in type(e).__name__ or "409" in str(e):
+            # Church exists (maybe under different pastor) — add pastor to it
+            existing_doc = church_container.read_item(church_id, partition_key=church_id)
+            pastors = existing_doc.get("pastors", [])
+            if not any(p["name"] == pastor for p in pastors):
+                pastors.append({"name": pastor})
+                existing_doc["pastors"] = pastors
+                church_container.upsert_item(existing_doc)
+                log.info(f"[ensure_church] Added {pastor} to existing church '{existing_doc['name']}'")
+            return {"ok": True, "church": existing_doc["name"], "created": False}
+        log.warning(f"[ensure_church] Failed to create church for {pastor}: {e}")
+        return {"ok": True, "church": None, "created": False}
+
 
 def update_sermon(input_data):
     """Patch a sermon document in Cosmos DB with etag check.

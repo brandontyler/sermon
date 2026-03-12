@@ -643,6 +643,83 @@ async def apply_bonus(req: func.HttpRequest) -> func.HttpResponse:
     return _json_response({"id": sermon_id, "compositePsr": psr, "bonus": bonus, "totalScore": total})
 
 
+@app.route(route="sermons/{sermon_id}", methods=["DELETE"])
+@app.function_name("delete_sermon")
+async def delete_sermon(req: func.HttpRequest) -> func.HttpResponse:
+    """DELETE /api/sermons/{id} — Delete a sermon and its blob (admin only)."""
+    import os
+    from azure.cosmos import CosmosClient, exceptions
+    from azure.storage.blob import ContainerClient
+
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    provided = req.headers.get("x-admin-key", "")
+    if not admin_key or provided != admin_key:
+        return _json_response({"error": "Unauthorized"}, 401)
+
+    sermon_id = req.route_params.get("sermon_id")
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    try:
+        doc = container.read_item(sermon_id, partition_key=sermon_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Sermon not found"}, 404)
+
+    # Delete blob folder (best-effort)
+    try:
+        blob_container = ContainerClient.from_connection_string(
+            os.environ["STORAGE_CONNECTION_STRING"], "sermon-audio"
+        )
+        blobs = blob_container.list_blobs(name_starts_with=f"{sermon_id}/")
+        for blob in blobs:
+            blob_container.delete_blob(blob.name)
+    except Exception as e:
+        log.warning(f"[delete_sermon] Blob cleanup failed for {sermon_id}: {e}")
+
+    container.delete_item(sermon_id, partition_key=sermon_id)
+    log.info(f"[delete_sermon] Deleted {sermon_id}: {doc.get('title')}")
+    return _json_response({"deleted": sermon_id})
+
+
+@app.route(route="sermons/{sermon_id}", methods=["PATCH"])
+@app.function_name("edit_sermon")
+async def edit_sermon(req: func.HttpRequest) -> func.HttpResponse:
+    """PATCH /api/sermons/{id} — Edit sermon metadata (admin only)."""
+    import os
+    from azure.cosmos import CosmosClient, exceptions
+
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    provided = req.headers.get("x-admin-key", "")
+    if not admin_key or provided != admin_key:
+        return _json_response({"error": "Unauthorized"}, 401)
+
+    sermon_id = req.route_params.get("sermon_id")
+    try:
+        body = req.get_json()
+    except Exception:
+        return _json_response({"error": "Invalid JSON"}, 400)
+
+    EDITABLE = {"title", "pastor", "date", "sermonType"}
+    updates = {k: v for k, v in body.items() if k in EDITABLE and v is not None}
+    if not updates:
+        return _json_response({"error": "No valid fields to update"}, 400)
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    try:
+        doc = container.read_item(sermon_id, partition_key=sermon_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Sermon not found"}, 404)
+
+    for k, v in updates.items():
+        doc[k] = v
+    container.upsert_item(doc)
+
+    log.info(f"[edit_sermon] {sermon_id}: updated {list(updates.keys())}")
+    return _json_response({k: doc.get(k) for k in ["id", "title", "pastor", "date", "sermonType"]})
+
+
 @app.route(route="churches", methods=["GET"])
 @app.function_name("list_churches")
 async def list_churches(req: func.HttpRequest) -> func.HttpResponse:
@@ -936,6 +1013,15 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "updates": updates,
         })
 
+        # Auto-create church if pastor is new
+        try:
+            yield context.call_activity_with_retry("activity_ensure_church", RETRY_LIGHT, {
+                "pastor": classification["pastor"],
+            })
+        except Exception as e:
+            if not context.is_replaying:
+                log.warning(f"[orchestrator] {sermon_id}: ensure_church failed ({e}), non-fatal")
+
         _set_status(context, sermon_id, "complete")
 
     except Exception as e:
@@ -1109,6 +1195,15 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "updates": updates,
         })
 
+        # Auto-create church if pastor is new
+        try:
+            yield context.call_activity_with_retry("activity_ensure_church", RETRY_LIGHT, {
+                "pastor": classification["pastor"],
+            })
+        except Exception as e:
+            if not context.is_replaying:
+                log.warning(f"[text_orchestrator] {sermon_id}: ensure_church failed ({e}), non-fatal")
+
         _set_status(context, sermon_id, "complete")
 
     except Exception as e:
@@ -1265,6 +1360,10 @@ def activity_generate_summary(input: dict):
 @bp.activity_trigger(input_name="input")
 def activity_update_sermon(input: dict):
     return _run_activity("update_sermon", update_sermon, input)
+
+@bp.activity_trigger(input_name="input")
+def activity_ensure_church(input: dict):
+    return _run_activity("ensure_church", ensure_church, input)
 
 @bp.activity_trigger(input_name="input")
 def activity_rescore_sermon(input: dict):

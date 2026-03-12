@@ -145,7 +145,7 @@ export default function ChurchAdminPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500">{c.address}</p>
-                    <p className="text-xs text-gray-400">{c.city}, {c.state} · {c.lat.toFixed(4)}, {c.lng.toFixed(4)}</p>
+                    <p className="text-xs text-gray-400">{c.city}, {c.state}{c.lat != null && c.lng != null ? ` · ${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}` : ""}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {c.pastors.map(p => (
                         <span key={p.name} className={`text-xs px-2 py-0.5 rounded-full ${p.primary ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>

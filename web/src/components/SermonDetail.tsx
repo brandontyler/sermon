@@ -64,7 +64,15 @@ export default function SermonDetailClient() {
         const res = await fetchWithRetry();
         if (!active) return;
         if (!res.ok) {
-          setError(res.status === 404 ? "Sermon not found." : `Server error (${res.status}). Try refreshing.`);
+          if (res.status === 404) {
+            setError("Sermon not found.");
+            setLoading(false);
+            return;
+          }
+          // Transient 500s happen when Parselmouth OOM kills the worker — keep polling
+          pollAttempts++;
+          if (pollAttempts < MAX_POLL) { timeoutId = setTimeout(poll, 5000); return; }
+          setError(`Server error (${res.status}). Try refreshing.`);
           setLoading(false);
           return;
         }

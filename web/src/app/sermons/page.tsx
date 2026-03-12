@@ -77,6 +77,7 @@ export default function SermonsPage() {
       </div>
       <div className="flex gap-4 mb-4">
         <Link href="/churches" className="text-sm text-blue-600 hover:underline">Find a Church</Link>
+        <Link href="/admin/manage" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">Admin</Link>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}

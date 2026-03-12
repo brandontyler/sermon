@@ -108,7 +108,7 @@ export default function ChurchesPage() {
         <>
           {/* Map */}
           <div className="rounded-lg overflow-hidden border border-gray-200 mb-6" style={{ height: 400 }}>
-            <MapView churches={filtered} />
+            <MapView churches={filtered.filter((c) => c.lat != null && c.lng != null)} />
           </div>
 
           {/* Stats */}

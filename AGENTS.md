@@ -4,53 +4,42 @@
 
 PSR (Pastor Sermon Rating) — A public web platform where anyone can upload sermon audio and receive a data-driven score (0-100 composite), like a QBR for quarterbacks but for preachers. Built on Azure serverless + AI services.
 
-```
-Upload Audio → Transcribe (AI Speech) → Analyze (GPT-4 + Parselmouth) → PSR Score → Display
-```
-
 **Current Phase:** MVP (Phase 0) — "Does This Thing Work?"
+Upload a sermon → get a score → see the breakdown. Nothing else.
 
-## Key Docs
+## PSR Score (0-100 Composite)
 
-| Doc | Purpose |
-|-----|---------|
-| `sermonplan.md` | Vision, PSR scoring categories, MVP scope, pipeline, phases |
-| `docs/architecture.md` | Full platform architecture, data model, cost estimates |
-| `docs/research.md` | Competitive landscape, POC results (#1-4), tools evaluation |
-| `docs/team.md` | Who's building this, dev tooling, setup |
+| Category | Weight | What It Measures |
+|----------|--------|-----------------|
+| Biblical Accuracy | 25% | Scripture references verified against passage context. Flags controversial interpretations, doesn't mark wrong. |
+| Time in the Word | 20% | Biblical content density (quoted + taught + applied + exposited), not just direct quotation %. |
+| Passage Focus | 10% | Time on main passage vs tangents. |
+| Clarity | 10% | Logical structure, flow, transitions. |
+| Engagement | 10% | Energy, pacing variation, audience connection. |
+| Application | 10% | Practical takeaways, actionable points. |
+| Delivery | 10% | Filler words, confidence, articulation. |
+| Emotional Range | 5% | Tone variation, passion, authenticity. |
 
-## Issue Tracking (Beads)
+Scores normalize within sermon type (expository/topical/survey). Tiered confidence: <80% → no normalization, 80-90% → half bump, >90% → full bump.
 
-Uses **br** (beads-rust) — git-native, AI-friendly task tracker stored in `.beads/`.
+Biblical Accuracy is denomination-neutral — penalizes misquoting and proof-texting, not theological convictions.
 
-| Command | Purpose |
-|---------|---------|
-| `br ready` | Find work with no blockers (START HERE) |
-| `br list` | List all issues |
-| `br show <id>` | View details + blockers |
-| `br update <id> --claim` | Claim work (atomic: assignee + in_progress) |
-| `br close <id> --reason "..."` | Complete work |
-| `br create "Title" -p 1 -t task` | Create task (P0-P3) |
-| `br dep add <child> <parent>` | Add blocker |
-| `br sync --flush-only` | Export DB → JSONL (then `git add .beads/ && git commit`) |
-| `br sync --import-only` | Import JSONL → DB (after git pull) |
+## Pipeline (high level)
 
-Issue IDs: `bd-xxx` (lowercase). Types: epic, feature, task, bug.
+```
+Upload → Validate + Cosmos record → Blob Storage →
+  Wave 1 (parallel): Transcribe (AI Speech fast API) + Parselmouth audio analysis →
+  Wave 2 (throttle-aware parallel): 6 LLM passes →
+    Pass 1: Biblical Analysis (o4-mini) — biblicalAccuracy, timeInTheWord, passageFocus
+    Pass 2: Structure & Content (gpt-5-mini) — clarity, application, engagement
+    Pass 3: Delivery (gpt-5-nano) — delivery, emotionalRange
+    Classify: sermon type + metadata (gpt-5-nano)
+    Segments: transcript segment labels (gpt-5-nano)
+    Pass 4: Enrichment (gpt-5-nano) — biblical languages, church history
+  Fan-in → Score normalization (pure code) → Summary (gpt-5-nano) → Store in Cosmos
+```
 
-After clone/checkout: `br sync --import-only`. After git pull: `br sync --import-only`.
-
-### Beads Workflow
-
-- Check `br ready` before starting work
-- Claim issues with `br update <id> --claim` before working on them
-- Close issues with `br close <id> --reason "..."` when done
-- Create new issues for discovered work rather than leaving TODOs in code
-- Flush after mutations: `br sync --flush-only`
-
-### Cost Controls
-
-- **NEVER kick off a full rescore (`POST /api/rescore {"all": true}`) without asking Brandon or Orlando first.** Rescores cost ~$1.50 and take ~90 minutes. Always propose the rescore, explain what changed and why it's needed, and wait for approval before executing.
-- Same applies to any bulk Azure operation that incurs significant cost or compute time.
+~$0.75/sermon ($0.67 speech + $0.09 OpenAI).
 
 ## Tech Stack (MVP)
 
@@ -59,40 +48,58 @@ After clone/checkout: `br sync --import-only`. After git pull: `br sync --import
 | Frontend | Next.js on Azure Static Web Apps |
 | API + Processing | Azure Functions (consumption plan) |
 | Orchestration | Durable Functions |
-| Storage | Azure Blob Storage (audio), Cosmos DB serverless (metadata + results) |
-| Transcription | Azure AI Speech (timestamps + diarization) |
-| Analysis | Azure OpenAI GPT-4 (scoring, classification, verification) |
+| Storage | Blob Storage (audio), Cosmos DB serverless (metadata + results) |
+| Transcription | Azure AI Speech (fast transcription API) |
+| Analysis | Azure OpenAI multi-model (o4-mini, gpt-5-mini, gpt-5-nano) |
 | Audio Metrics | Parselmouth (pitch, volume, pauses) |
 | Secrets | Azure Key Vault |
 
-## POC Code
+## MVP Boundaries
 
-POC scripts live in `poc/`. Sample sermons in `poc/samples/` (Piper sermons, MP3).
+In: audio upload (MP3/WAV/M4A), text upload, transcription, 8-category scoring, segment classification, enrichment, simple web UI, English only, max 1 hour.
 
-| File | What it does |
-|------|-------------|
-| `poc/psr_poc.py` | End-to-end PSR scoring proof of concept |
-| `poc/scripture_analyzer.py` | Scripture detection + verification |
-| `poc/audio_analysis_poc.py` | Parselmouth audio metrics extraction |
-| `poc/sermon_comparison.py` | Cross-sermon comparison (POC #4) |
+Not in: video, auth, pastor profiles, leaderboards, search, content moderation, commentary RAG, 2-hour support.
+
+## Key Docs
+
+| Doc | Purpose |
+|-----|---------|
+| `sermonplan.md` | Full vision, detailed pipeline, POC history, all known issues, future phases |
+| `docs/architecture.md` | Platform architecture, data model, cost estimates |
+| `docs/research.md` | Competitive landscape, POC results, tools evaluation, model selection |
+| `docs/rescore.md` | Detailed rescore operations reference (selective, staleness, workflows) |
+| `docs/team.md` | Who's building this, dev tooling, setup |
+
+## Issue Tracking (Beads)
+
+Uses **br** (beads-rust) — git-native task tracker in `.beads/`.
+
+| Command | Purpose |
+|---------|---------|
+| `br ready` | Find work with no blockers (START HERE) |
+| `br list` | List all issues |
+| `br show <id>` | View details + blockers |
+| `br update <id> --claim` | Claim work |
+| `br close <id> --reason "..."` | Complete work |
+| `br create "Title" -p 1 -t task` | Create task (P0-P3) |
+| `br sync --flush-only` | Export DB → JSONL (then git add + commit) |
+| `br sync --import-only` | Import JSONL → DB (after git pull) |
+
+Workflow: `br ready` → claim → work → close → flush. Create issues for discovered work, don't leave TODOs in code.
+
+## Cost Controls
+
+- **NEVER kick off a full rescore (`POST /api/rescore {"all": true}`) without asking Brandon or Orlando first.** ~$1.50, ~90 minutes. Propose, explain, wait for approval.
+- Single-sermon and selective rescores are fine without asking.
+- Same rule for any bulk Azure operation with significant cost/compute.
 
 ## E2E Regression Tests
 
-Browser-based tests using dev-browser (Playwright). Run after every build+deploy to verify MVP functionality.
-
-**24 tests covering:** home page (welcome intro, audio + text dropzones), sermons list (sorting PSR + date, type filtering, source column, score colors), sermon detail (score gauge with color verification, 8 category cards, reasoning toggle, radar chart, strengths/improvements, transcript with segments), back navigation, direct URL routing (regression for sermon-2lz), and console error monitoring.
-
-### Running
+24 browser tests via dev-browser (Playwright). Run after every deploy.
 
 ```bash
-# Copy test to dev-browser scripts dir (required for @/ import alias)
 cp tests/e2e-regression.ts ~/code/work/dev-browser/skills/dev-browser/scripts/psr-regression.ts
-
-# Run (requires dev-browser server via ~/bin/spinup)
 cd ~/code/work/dev-browser/skills/dev-browser && npx tsx scripts/psr-regression.ts
 ```
 
-- Tolerates Azure Functions cold starts (5s waits on API-dependent pages)
-- Screenshots saved to `dev-browser/skills/dev-browser/tmp/reg-*.png`
-- Set `SCREENSHOTS=0` to skip screenshots
-- Exit code 1 on any failure
+Set `SCREENSHOTS=0` to skip screenshots. Exit code 1 on failure.
