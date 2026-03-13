@@ -211,10 +211,12 @@ def pass1_biblical(input_data):
     client = _openai_client()
     transcript = input_data["transcript"]
 
-    resp = client.chat.completions.create(
-        model="o4-mini",
-        response_format={"type": "json_object"},
-        messages=[{"role": "user", "content": f"""You are a biblical scholarship engine analyzing a sermon transcript. Return JSON with:
+    from openai import BadRequestError
+    try:
+        resp = client.chat.completions.create(
+            model="o4-mini",
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": f"""You are a biblical scholarship engine analyzing a sermon transcript. Return JSON with:
 
 - "biblical_accuracy": {{"score": 0-100, "scripture_refs_found": [list of "Book Chapter:Verse" references detected], "refs_used_in_context": count, "refs_out_of_context": count, "reasoning": "..."}}
 - "time_in_the_word": {{"score": 0-100, "biblical_content_pct": estimated %, "direct_quotation_pct": estimated %, "anecdote_pct": estimated %, "reasoning": "..."}}
@@ -270,6 +272,14 @@ Be rigorous. Check whether each scripture reference is used in its proper contex
 SERMON TRANSCRIPT:
 {transcript}"""}],
     )
+    except BadRequestError as e:
+        if "content_filter" in str(e) or "content management policy" in str(e):
+            log.warning("[pass1_biblical] Content filter triggered, returning fallback scores")
+            from schema import CATEGORY_KEY_MAP
+            fallback = {"score": 50, "reasoning": "Content filter triggered — fallback score. Manual review recommended."}
+            return {CATEGORY_KEY_MAP[k]: fallback for k in ["biblical_accuracy", "time_in_the_word", "passage_focus"]}
+        raise
+
     from schema import CATEGORY_KEY_MAP, validate_llm_response
     raw = validate_llm_response(resp.choices[0].message.content, {
         "biblical_accuracy": ["score", "reasoning"],
@@ -296,8 +306,10 @@ def pass2_structure(input_data):
     client = _openai_client()
     transcript = input_data["transcript"]
 
-    resp = client.chat.completions.create(
-        model="gpt-5-mini",
+    from openai import BadRequestError
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-5-mini",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": """You are a sermon structure analyst. Evaluate against these rubrics and return JSON.
@@ -357,6 +369,14 @@ Return JSON:
 - "engagement": {{"score": 0-100, "rhetorical_devices": [list], "audience_connection": "strong/moderate/weak", "reasoning": "..."}}"""},
         ],
     )
+    except BadRequestError as e:
+        if "content_filter" in str(e) or "content management policy" in str(e):
+            log.warning("[pass2_structure] Content filter triggered, returning fallback scores")
+            from schema import CATEGORY_KEY_MAP
+            fallback = {"score": 50, "reasoning": "Content filter triggered — fallback score. Manual review recommended."}
+            return {CATEGORY_KEY_MAP[k]: fallback for k in ["clarity", "application", "engagement"]}
+        raise
+
     from schema import CATEGORY_KEY_MAP, validate_llm_response
     raw = validate_llm_response(resp.choices[0].message.content, {
         "clarity": ["score", "reasoning"],
@@ -437,12 +457,14 @@ SCORING SCALE — use the FULL 0-100 range, not just 40-90:
         audio_section = f"AUDIO METRICS: Not available (audio analysis failed)\n- WPM: {wpm}"
         confidence_note = "\nIMPORTANT: Note in reasoning that scores are text-only estimates without audio data."
 
-    resp = client.chat.completions.create(
-        model="gpt-5-nano",
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": f"""{audio_section}
+    from openai import BadRequestError
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-5-nano",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": f"""{audio_section}
 
 TRANSCRIPT:
 {transcript}
@@ -450,8 +472,24 @@ TRANSCRIPT:
 Return JSON:
 - "delivery": {{"score": 0-100, "filler_words": {{}}, "filler_total": int, "fillers_per_minute": float, "wpm": {wpm}, "pacing_assessment": "...", "confidence_level": "high/moderate/low", "reasoning": "..."}}
 - "emotional_range": {{"score": 0-100, "tone_shifts": int, "passion_moments": [descriptions], "sentiment_arc": "...", "reasoning": "..."}}{confidence_note}"""},
-        ],
-    )
+            ],
+        )
+    except BadRequestError as e:
+        if "content_filter" in str(e) or "content management policy" in str(e):
+            log.warning(f"[pass3_delivery] Content filter triggered, returning fallback scores")
+            from schema import CATEGORY_KEY_MAP
+            return {
+                CATEGORY_KEY_MAP["delivery"]: {
+                    "score": 50,
+                    "reasoning": "Content filter triggered — fallback score. Manual review recommended.",
+                },
+                CATEGORY_KEY_MAP["emotional_range"]: {
+                    "score": 50,
+                    "reasoning": "Content filter triggered — fallback score. Manual review recommended.",
+                },
+            }
+        raise
+
     from schema import CATEGORY_KEY_MAP, validate_llm_response
     raw = validate_llm_response(resp.choices[0].message.content, {
         "delivery": ["score", "reasoning"],

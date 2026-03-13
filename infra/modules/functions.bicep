@@ -39,6 +39,8 @@ resource func 'Microsoft.Web/sites@2023-12-01' = {
       appSettings: [
         // Runtime needs these at cold start — direct values, not Key Vault refs
         { name: 'AzureWebJobsStorage', value: storageConnectionString }
+        { name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', value: storageConnectionString }
+        { name: 'WEBSITE_CONTENTSHARE', value: 'psr-functions-${environment}' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
