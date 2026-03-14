@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { apiUrl } from "@/lib/api";
 
 const ALLOWED_AUDIO = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a"];
@@ -158,16 +157,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen p-4">
-      <div className="flex items-start gap-6 mt-6 mb-6 max-w-[900px] mx-auto">
-        <div className="shrink-0">
-          <h1 className="text-xl text-gray-900 font-semibold leading-tight">PSR</h1>
-          <p className="text-xs text-gray-500">Pastor Sermon Rating</p>
-        </div>
-        <p className="text-sm text-gray-600 leading-relaxed text-center flex-1">
-          Welcome to a new way of strengthening your voice in ministry. Our platform provides pastors and speakers with thoughtful, data‑driven insights by analyzing uploaded sermon audio and comparing it against a carefully trained communication model. The goal isn&apos;t to critique or diminish—it&apos;s to illuminate strengths, highlight opportunities for growth, and support every pastor in delivering clearer, more impactful messages. With a warm, encouraging approach, we help communicators refine their craft so their words can reach hearts with even greater clarity and purpose.
-        </p>
-      </div>
-      <div className="w-full max-w-[400px] mx-auto text-center">
+      <div className="w-full max-w-[400px] mx-auto text-center mt-8">
 
         {!file && mode !== "youtube" ? (
           <div className="space-y-4">
@@ -345,13 +335,6 @@ export default function UploadPage() {
         )}
 
         {error && <p role="alert" className="text-red-500 text-sm mt-4">{error}</p>}
-
-        <Link href="/sermons" className="inline-block mt-8 text-sm text-blue-600 hover:underline">
-          View All Sermons →
-        </Link>
-        <Link href="/churches" className="inline-block mt-2 ml-6 text-sm text-blue-600 hover:underline">
-          Find a Church →
-        </Link>
       </div>
     </div>
   );

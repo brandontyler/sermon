@@ -278,22 +278,16 @@ function DashboardInner() {
     <div className="max-w-[1100px] mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">PSR Dashboard</h1>
-          <p className="text-xs text-gray-500">Pastor performance overview</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={pastorFilter}
-            onChange={(e) => setPastorFilter(e.target.value)}
-            className="text-sm border border-gray-200 rounded px-3 py-1.5 bg-white"
-            aria-label="Filter by pastor"
-          >
-            <option value="all">All Pastors</option>
-            {pastors.sort().map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <Link href="/sermons" className="text-sm text-blue-600 hover:underline">Sermons →</Link>
-        </div>
+        <h1 className="text-lg font-bold text-gray-900">Dashboard</h1>
+        <select
+          value={pastorFilter}
+          onChange={(e) => setPastorFilter(e.target.value)}
+          className="text-sm border border-gray-200 rounded px-3 py-1.5 bg-white"
+          aria-label="Filter by pastor"
+        >
+          <option value="all">All Pastors</option>
+          {pastors.sort().map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
       </div>
 
       {/* KPI Cards */}
