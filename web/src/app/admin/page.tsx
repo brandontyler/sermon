@@ -235,11 +235,8 @@ function AdminPageInner() {
   return (
     <div className="max-w-[820px] mx-auto px-3 sm:px-4 py-6 sm:py-8">
       <div className="flex items-center justify-between mb-4 sm:mb-6">
-        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Admin — Bonus Points</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/admin/manage" className="text-blue-600 hover:underline">Manage</Link>
-          <Link href="/sermons" className="text-blue-600 hover:underline">← Sermons</Link>
-        </div>
+        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Bonus Points</h1>
+        <Link href="/admin/manage" className="text-sm text-blue-600 hover:underline">Manage</Link>
       </div>
 
       <input

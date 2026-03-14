@@ -72,12 +72,7 @@ export default function SermonsPage() {
   return (
     <div className="max-w-[960px] mx-auto p-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">PSR — Pastor Sermon Rating</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">Upload →</Link>
-      </div>
-      <div className="flex gap-4 mb-4">
-        <Link href="/churches" className="text-sm text-blue-600 hover:underline">Find a Church</Link>
-        <Link href="/admin/manage" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">Admin</Link>
+        <h1 className="text-lg font-semibold text-gray-900">All Sermons</h1>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
