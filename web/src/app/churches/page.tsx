@@ -69,9 +69,10 @@ export default function ChurchesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-gray-900">Find a Church</h1>
         <div className="flex gap-3 text-sm">
+          <Link href="/" className="text-blue-600 hover:underline">Home</Link>
           <Link href="/church-admin" className="text-blue-600 hover:underline">Admin</Link>
           <Link href="/sermons" className="text-blue-600 hover:underline">Sermons</Link>
-          <Link href="/" className="text-blue-600 hover:underline">Upload</Link>
+          <Link href="/upload" className="text-blue-600 hover:underline">Upload</Link>
         </div>
       </div>
 

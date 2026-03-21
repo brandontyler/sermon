@@ -25,7 +25,7 @@ function color(score: number) { return score >= 74 ? "#22c55e" : score >= 60 ? "
 
 // ── Simple SVG Charts ──
 
-function BarChart({ data, label }: { data: { name: string; value: number }[]; label: string }) {
+function BarChart({ data, label }: { data: { name: string; value: number; id?: string }[]; label: string }) {
   const max = Math.max(...data.map((d) => d.value), 1);
   const h = 130, w = 400, barW = Math.min(40, (w - 40) / data.length - 8);
   const startX = (w - data.length * (barW + 8)) / 2;
@@ -36,11 +36,14 @@ function BarChart({ data, label }: { data: { name: string; value: number }[]; la
         {data.map((d, i) => {
           const barH = (d.value / max) * (h - 20);
           const x = startX + i * (barW + 8);
+          const titleEl = (
+            <text x={x + barW / 2} y={h + 14} textAnchor="middle" className={`text-[8px] ${d.id ? "fill-blue-600 cursor-pointer hover:underline" : "fill-gray-500"}`}>{d.name.length > 12 ? d.name.slice(0, 11) + "…" : d.name}</text>
+          );
           return (
             <g key={i}>
               <rect x={x} y={h - barH} width={barW} height={barH} fill={color(d.value)} rx={3} />
-              <text x={x + barW / 2} y={h - barH - 4} textAnchor="middle" className="text-[10px] fill-gray-700 font-bold">{d.value.toFixed(1)}</text>
-              <text x={x + barW / 2} y={h + 14} textAnchor="middle" className="text-[8px] fill-gray-500">{d.name.length > 12 ? d.name.slice(0, 11) + "…" : d.name}</text>
+              <text x={x + barW / 2} y={h - barH - 4} textAnchor="middle" className="text-[10px] fill-slate-300 font-bold">{d.value.toFixed(1)}</text>
+              {d.id ? <a href={`/sermons/${d.id}`}>{titleEl}</a> : titleEl}
             </g>
           );
         })}
@@ -49,7 +52,7 @@ function BarChart({ data, label }: { data: { name: string; value: number }[]; la
   );
 }
 
-function LineChart({ data, label }: { data: { name: string; value: number }[]; label: string }) {
+function LineChart({ data, label }: { data: { name: string; value: number; id?: string }[]; label: string }) {
   if (data.length < 2) return null;
   const max = Math.max(...data.map((d) => d.value), 1);
   const min = Math.min(...data.map((d) => d.value));
@@ -65,13 +68,18 @@ function LineChart({ data, label }: { data: { name: string; value: number }[]; l
       <p className="text-xs font-bold text-gray-600 mb-2">{label}</p>
       <svg viewBox={`0 0 ${w} ${h + 20}`} className="w-full">
         <polyline points={line} fill="none" stroke="#3b82f6" strokeWidth={2.5} strokeLinejoin="round" />
-        {points.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={4} fill={color(data[i].value)} stroke="white" strokeWidth={2} />
-            <text x={p.x} y={p.y - 10} textAnchor="middle" className="text-[9px] fill-gray-700 font-bold">{data[i].value.toFixed(1)}</text>
-            <text x={p.x} y={h + 10} textAnchor="middle" className="text-[7px] fill-gray-500">{data[i].name.length > 10 ? data[i].name.slice(0, 9) + "…" : data[i].name}</text>
-          </g>
-        ))}
+        {points.map((p, i) => {
+          const titleEl = (
+            <text x={p.x} y={h + 10} textAnchor="middle" className={`text-[7px] ${data[i].id ? "fill-blue-600 cursor-pointer" : "fill-gray-500"}`}>{data[i].name.length > 10 ? data[i].name.slice(0, 9) + "…" : data[i].name}</text>
+          );
+          return (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={4} fill={color(data[i].value)} stroke="#1e293b" strokeWidth={2} />
+              <text x={p.x} y={p.y - 10} textAnchor="middle" className="text-[9px] fill-slate-300 font-bold">{data[i].value.toFixed(1)}</text>
+              {data[i].id ? <a href={`/sermons/${data[i].id}`}>{titleEl}</a> : titleEl}
+            </g>
+          );
+        })}
       </svg>
     </div>
   );
@@ -319,7 +327,7 @@ function DashboardInner() {
         <div className="bg-white border border-gray-200 rounded-lg p-3">
           <BarChart
             label="Score Trend (Last 6)"
-            data={[...filtered].sort((a, b) => a.date.localeCompare(b.date)).slice(-6).map((s) => ({ name: s.title, value: psr(s) }))}
+            data={[...filtered].sort((a, b) => a.date.localeCompare(b.date)).slice(-6).map((s) => ({ name: s.title, value: psr(s), id: s.id }))}
           />
         </div>
       </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, adminFetch } from "@/lib/api";
 import { scoreColor, normalizeUrl } from "@/lib/types";
 
 interface Pastor { name: string; role?: string; primary?: boolean; sermonCount?: number; avgScore?: number | null; }
@@ -12,7 +12,6 @@ export default function ChurchAdminPage() {
   const [churches, setChurches] = useState<Church[]>([]);
   const [knownPastors, setKnownPastors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adminKey, setAdminKey] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Church | null>(null);
@@ -20,8 +19,8 @@ export default function ChurchAdminPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(apiUrl("/api/churches")).then(r => r.json()),
-      fetch(apiUrl("/api/sermons")).then(r => r.json()),
+      adminFetch("/api/churches").then(r => r.json()),
+      adminFetch("/api/sermons").then(r => r.json()),
     ]).then(([c, s]) => {
       setChurches(c);
       const names = [...new Set(s.map((x: { pastor?: string }) => x.pastor).filter(Boolean))] as string[];
@@ -42,16 +41,19 @@ export default function ChurchAdminPage() {
     setDraft({ id: "", name: "", address: "", city: "", state: "", lat: 0, lng: 0, pastors: [{ name: "", role: "", primary: true }] });
   }
 
+  const [error, setError] = useState("");
+
   async function save() {
-    if (!draft || !adminKey) return;
+    if (!draft) return;
     setSaving(true);
+    setError("");
     if (!draft.id) draft.id = draft.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     draft.pastors = draft.pastors.filter(p => p.name.trim());
     if (!draft.pastors.some(p => p.primary) && draft.pastors[0]) draft.pastors[0].primary = true;
 
-    const r = await fetch(apiUrl("/api/churches"), {
+    const r = await adminFetch("/api/churches", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),
     });
     if (r.ok) {
@@ -62,6 +64,9 @@ export default function ChurchAdminPage() {
         return [...prev, saved];
       });
       setEditId(null); setShowNew(false); setDraft(null);
+    } else {
+      const body = await r.json().catch(() => null);
+      setError(body?.error || `Save failed (${r.status})`);
     }
     setSaving(false);
   }
@@ -94,8 +99,8 @@ export default function ChurchAdminPage() {
   function primaryPastor(c: Church) { return c.pastors.find(p => p.primary) || c.pastors[0]; }
 
   async function deleteChurch(id: string) {
-    if (!adminKey || !confirm("Delete this church?")) return;
-    await fetch(apiUrl(`/api/churches/${id}`), { method: "DELETE", headers: { "x-admin-key": adminKey } });
+    if (!confirm("Delete this church?")) return;
+    await adminFetch(`/api/churches/${id}`, { method: "DELETE" });
     setChurches(prev => prev.filter(c => c.id !== id));
   }
 
@@ -106,18 +111,18 @@ export default function ChurchAdminPage() {
         <div className="flex gap-3 text-sm">
           <Link href="/churches" className="text-blue-600 hover:underline">Church Finder</Link>
           <Link href="/sermons" className="text-blue-600 hover:underline">Sermons</Link>
+          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
         </div>
       </div>
 
-      <div className="mb-6 flex items-center gap-3">
-        <label className="text-sm text-gray-500">Admin Key:</label>
-        <input type="password" value={adminKey} onChange={e => setAdminKey(e.target.value)}
-          className="text-sm border border-gray-200 rounded px-3 py-1.5 w-72" placeholder="Enter admin key" />
-        <button onClick={startNew} disabled={!adminKey}
-          className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-40">
+      <div className="mb-6">
+        <button onClick={startNew}
+          className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700">
           + New Church
         </button>
       </div>
+
+      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
       {loading ? <p className="text-gray-400 text-sm">Loading...</p> : (
         <div className="space-y-3">
@@ -156,10 +161,10 @@ export default function ChurchAdminPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => startEdit(c)} disabled={!adminKey}
-                      className="text-xs text-blue-600 hover:underline disabled:opacity-30">Edit</button>
-                    <button onClick={() => deleteChurch(c.id)} disabled={!adminKey}
-                      className="text-xs text-red-500 hover:underline disabled:opacity-30">Delete</button>
+                    <button onClick={() => startEdit(c)}
+                      className="text-xs text-blue-600 hover:underline">Edit</button>
+                    <button onClick={() => deleteChurch(c.id)}
+                      className="text-xs text-red-500 hover:underline">Delete</button>
                   </div>
                 </div>
               )}

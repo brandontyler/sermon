@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, adminFetch } from "@/lib/api";
 import { SermonSummary, scoreColor } from "@/lib/types";
 
 export default function AdminManagePage() {
-  const [adminKey, setAdminKey] = useState("");
   const [sermons, setSermons] = useState<SermonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
@@ -16,7 +15,7 @@ export default function AdminManagePage() {
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   useEffect(() => {
-    fetch(apiUrl("/api/sermons"))
+    adminFetch("/api/sermons")
       .then((r) => r.json())
       .then((data) => { setSermons(data); setLoading(false); })
       .catch(() => setLoading(false));
@@ -29,12 +28,11 @@ export default function AdminManagePage() {
   }
 
   async function saveEdit(id: string) {
-    if (!adminKey) { setMessage({ text: "Enter admin key", error: true }); return; }
     setSaving(true);
     try {
-      const r = await fetch(apiUrl(`/api/sermons/${id}`), {
+      const r = await adminFetch(`/api/sermons/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
       });
       const data = await r.json();
@@ -50,12 +48,10 @@ export default function AdminManagePage() {
   }
 
   async function confirmDelete(id: string) {
-    if (!adminKey) { setMessage({ text: "Enter admin key", error: true }); return; }
     setDeleting(id);
     try {
-      const r = await fetch(apiUrl(`/api/sermons/${id}`), {
+      const r = await adminFetch(`/api/sermons/${id}`, {
         method: "DELETE",
-        headers: { "x-admin-key": adminKey },
       });
       const data = await r.json();
       if (!r.ok) { setMessage({ text: data.error, error: true }); return; }
@@ -74,17 +70,11 @@ export default function AdminManagePage() {
         <h1 className="text-base sm:text-lg font-semibold text-gray-900">Admin — Manage Sermons</h1>
         <div className="flex gap-3 text-sm">
           <Link href="/admin" className="text-blue-600 hover:underline">Bonus</Link>
+          <Link href="/admin/feeds" className="text-blue-600 hover:underline">Feeds</Link>
           <Link href="/sermons" className="text-blue-600 hover:underline">← Sermons</Link>
+          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
         </div>
       </div>
-
-      <input
-        type="password"
-        placeholder="Admin key"
-        value={adminKey}
-        onChange={(e) => setAdminKey(e.target.value)}
-        className="w-full border border-gray-200 rounded px-3 py-2 text-sm mb-4"
-      />
 
       {message && (
         <p className={`text-sm mb-3 ${message.error ? "text-red-500" : "text-green-600"}`}>{message.text}</p>

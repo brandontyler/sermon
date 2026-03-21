@@ -107,6 +107,16 @@ deploy_infra() {
 
   ensure_providers
 
+  # Load secrets from .env for Bicep secure params
+  if [ -f "${PROJECT_DIR}/.env" ]; then
+    ADMIN_KEY=$(grep '^ADMIN_KEY=' "${PROJECT_DIR}/.env" | cut -d= -f2-)
+    WS_USER=$(grep '^WEBSHARE_PROXY_USERNAME=' "${PROJECT_DIR}/.env" | cut -d= -f2-)
+    WS_PASS=$(grep '^WEBSHARE_PROXY_PASSWORD=' "${PROJECT_DIR}/.env" | cut -d= -f2-)
+  fi
+  : "${ADMIN_KEY:?Missing ADMIN_KEY in .env}"
+  : "${WS_USER:?Missing WEBSHARE_PROXY_USERNAME in .env}"
+  : "${WS_PASS:?Missing WEBSHARE_PROXY_PASSWORD in .env}"
+
   echo "[·] Resource group..."
   az group create --name "$RG" --location "$LOCATION" -o none
   echo "    ✓ $RG"
@@ -118,6 +128,7 @@ deploy_infra() {
     --resource-group "$RG" \
     --template-file "${SCRIPT_DIR}/main.bicep" \
     --parameters "${SCRIPT_DIR}/main.bicepparam" \
+    --parameters adminKey="$ADMIN_KEY" webshareProxyUsername="$WS_USER" webshareProxyPassword="$WS_PASS" \
     -o none
   echo "    ✓ Bicep complete"
 

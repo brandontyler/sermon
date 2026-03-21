@@ -75,6 +75,24 @@ NORM_ADJUSTMENTS = {
     "survey": {"biblicalAccuracy": 3, "timeInTheWord": 5, "passageFocus": 12},
 }
 
+UNASSIGNED_CHURCH_ID = "church-unassigned"
+
+
+def new_feed_doc(feed_id, feed_url, title, backfill=0):
+    """Create initial Cosmos document for an RSS feed subscription."""
+    import datetime
+    return {
+        "id": feed_id,
+        "feedUrl": feed_url,
+        "title": title,
+        "active": True,
+        "backfillCount": backfill,
+        "lastPolledAt": None,
+        "lastPollResult": None,
+        "lastSeenGuid": None,
+        "createdAt": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+
 
 def new_sermon_doc(sermon_id, filename, title=None, pastor=None):
     """Create initial Cosmos document when upload starts."""
@@ -96,6 +114,7 @@ def new_sermon_doc(sermon_id, filename, title=None, pastor=None):
         "classificationConfidence": None,
         "normalizationApplied": None,
         "audioMetrics": None,
+        "churchId": UNASSIGNED_CHURCH_ID,
         "wpmFlag": False,
         "error": None,
         "failedAt": None,

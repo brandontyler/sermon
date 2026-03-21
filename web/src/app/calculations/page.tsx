@@ -6,6 +6,7 @@ export default function CalculationsPage() {
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-xl font-bold text-gray-900">Bonus Calculations Reference</h1>
         <Link href="/admin" className="text-sm text-blue-600 hover:underline">← Admin</Link>
+        <Link href="/sermons" className="text-sm text-blue-600 hover:underline">← Sermons</Link>
       </div>
 
       <div className="space-y-10 text-sm text-gray-700 leading-relaxed">

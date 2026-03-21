@@ -8,6 +8,13 @@ param location string
 param environment string
 param openaiModelVersions object
 
+@secure()
+param adminKey string
+@secure()
+param webshareProxyUsername string
+@secure()
+param webshareProxyPassword string
+
 // --- Monitoring (needed by Functions) ---
 module monitoring 'modules/monitoring.bicep' = {
   name: 'monitoring'
@@ -53,6 +60,9 @@ module keyvault 'modules/keyvault.bicep' = {
     openaiName: openai.outputs.name
     cosmosName: cosmos.outputs.name
     storageName: storage.outputs.name
+    adminKey: adminKey
+    webshareProxyUsername: webshareProxyUsername
+    webshareProxyPassword: webshareProxyPassword
   }
 }
 

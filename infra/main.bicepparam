@@ -10,3 +10,8 @@ param openaiModelVersions = {
   gpt5mini: '2025-08-07'
   gpt5nano: '2025-08-07'
 }
+
+// Secure params — actual values passed via CLI overrides in deploy.sh (from .env)
+param adminKey = ''
+param webshareProxyUsername = ''
+param webshareProxyPassword = ''

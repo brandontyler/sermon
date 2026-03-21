@@ -58,6 +58,9 @@ export interface SermonDetail extends SermonSummary {
   audioMetrics: AudioMetrics | null;
   classificationConfidence: number | null;
   normalizationApplied: "full" | "half" | "none" | null;
+  aiScore?: 1 | 2 | 3 | null;
+  aiReasoning?: string | null;
+  sermonSummary?: { overview: string; keyPoints: string[] } | null;
 }
 
 export const CATEGORY_WEIGHTS: Record<string, number> = {

@@ -980,14 +980,15 @@ def ensure_church(input_data):
     """Auto-create a church entry if the pastor doesn't have one.
 
     Uses LLM to look up the pastor's church name, city, and state.
-    Input: {"pastor": str}
+    Sets churchId on the sermon doc. Falls back to "church-unassigned".
+    Input: {"pastor": str, "sermonId": str}
     Output: {"ok": bool, "church": str|None, "created": bool}
     """
     from azure.cosmos import CosmosClient
+    from schema import UNASSIGNED_CHURCH_ID
 
     pastor = input_data.get("pastor")
-    if not pastor:
-        return {"ok": True, "church": None, "created": False}
+    sermon_id = input_data.get("sermonId")
 
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
     db = cosmos.get_database_client("psr")
@@ -998,13 +999,55 @@ def ensure_church(input_data):
     except Exception:
         church_container = db.get_container_client("churches")
 
+    # Ensure "Church Unassigned" record exists
+    try:
+        church_container.read_item(UNASSIGNED_CHURCH_ID, partition_key=UNASSIGNED_CHURCH_ID)
+    except Exception:
+        try:
+            church_container.create_item({
+                "id": UNASSIGNED_CHURCH_ID,
+                "name": "Church Unassigned",
+                "city": "", "state": "", "url": "",
+                "pastors": [], "autoCreated": True,
+            })
+        except Exception:
+            pass  # race condition / already exists
+
+    def _set_sermon_church(church_id):
+        if not sermon_id:
+            return
+        try:
+            sermon_container = db.get_container_client("sermons")
+            doc = sermon_container.read_item(sermon_id, partition_key=sermon_id)
+            doc["churchId"] = church_id
+            sermon_container.upsert_item(doc)
+        except Exception as e:
+            log.warning(f"[ensure_church] Failed to set churchId on {sermon_id}: {e}")
+
+    def _assign_unassigned():
+        """Set sermon to unassigned and add pastor to unassigned church's pastors list."""
+        _set_sermon_church(UNASSIGNED_CHURCH_ID)
+        if pastor:
+            try:
+                ua = church_container.read_item(UNASSIGNED_CHURCH_ID, partition_key=UNASSIGNED_CHURCH_ID)
+                if not any(p["name"] == pastor for p in ua.get("pastors", [])):
+                    ua.setdefault("pastors", []).append({"name": pastor})
+                    church_container.upsert_item(ua)
+            except Exception:
+                pass
+
+    if not pastor:
+        _set_sermon_church(UNASSIGNED_CHURCH_ID)
+        return {"ok": True, "church": None, "created": False}
+
     # Check if pastor already has a church
     existing = list(church_container.query_items(
-        "SELECT c.name FROM c WHERE ARRAY_CONTAINS(c.pastors, {'name': @p}, true)",
+        "SELECT c.id, c.name FROM c WHERE ARRAY_CONTAINS(c.pastors, {'name': @p}, true)",
         parameters=[{"name": "@p", "value": pastor}],
         enable_cross_partition_query=True,
     ))
     if existing:
+        _set_sermon_church(existing[0]["id"])
         return {"ok": True, "church": existing[0]["name"], "created": False}
 
     # Ask LLM to identify the church
@@ -1028,10 +1071,12 @@ If you cannot confidently identify them, return: {{"name": null, "confidence": "
         result = _json.loads(resp.choices[0].message.content)
     except Exception:
         log.warning(f"[ensure_church] LLM returned unparseable response for {pastor}")
+        _assign_unassigned()
         return {"ok": True, "church": None, "created": False}
 
     if not result.get("name") or result.get("confidence") == "low":
         log.info(f"[ensure_church] Could not identify church for {pastor}")
+        _assign_unassigned()
         return {"ok": True, "church": None, "created": False}
 
     # Create the church
@@ -1049,6 +1094,7 @@ If you cannot confidently identify them, return: {{"name": null, "confidence": "
     try:
         church_container.create_item(doc)
         log.info(f"[ensure_church] Auto-created church '{result['name']}' for {pastor}")
+        _set_sermon_church(church_id)
         return {"ok": True, "church": result["name"], "created": True}
     except Exception as e:
         if "Conflict" in type(e).__name__ or "409" in str(e):
@@ -1060,8 +1106,10 @@ If you cannot confidently identify them, return: {{"name": null, "confidence": "
                 existing_doc["pastors"] = pastors
                 church_container.upsert_item(existing_doc)
                 log.info(f"[ensure_church] Added {pastor} to existing church '{existing_doc['name']}'")
+            _set_sermon_church(church_id)
             return {"ok": True, "church": existing_doc["name"], "created": False}
         log.warning(f"[ensure_church] Failed to create church for {pastor}: {e}")
+        _assign_unassigned()
         return {"ok": True, "church": None, "created": False}
 
 
@@ -1106,3 +1154,119 @@ def update_sermon(input_data):
             raise
 
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────
+#  AI Detection
+# ─────────────────────────────────────────────
+
+def detect_ai_generation(input_data):
+    """Detect if transcript was AI-generated. Returns {"aiScore": 1|2|3, "aiReasoning": str}.
+    1=green (human), 2=yellow (uncertain), 3=red (likely AI)."""
+    client = _openai_client()
+    transcript = input_data["transcript"]
+    # Use first ~3000 words to keep token cost low
+    words = transcript.split()
+    sample = " ".join(words[:3000]) if len(words) > 3000 else transcript
+
+    resp = client.chat.completions.create(
+        model="gpt-5-nano",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "You are an AI-generated text detector analyzing sermon transcripts."},
+            {"role": "user", "content": f"""Analyze this sermon transcript and determine if it was likely written/generated by AI or spoken by a human.
+
+Consider these signals:
+- AI text tends to be overly polished, formulaic, and lacks natural speech patterns (filler words, self-corrections, tangents, false starts)
+- Human sermons have verbal tics, repetition, audience interaction, spontaneous asides
+- AI text often has unnaturally even paragraph lengths and predictable structure
+- Human speech has varying sentence complexity and natural rhythm breaks
+- AI tends toward generic platitudes; human preachers have distinctive voice and style
+
+Return JSON:
+{{"score": <1|2|3>, "reasoning": "<1-2 sentence explanation>"}}
+
+Where:
+1 = Clearly human-delivered (natural speech patterns, verbal tics, organic flow)
+2 = Uncertain (mixed signals, could be either, or heavily edited human speech)
+3 = Likely AI-generated (formulaic, overly polished, lacks human speech markers)
+
+Transcript:
+{sample}"""},
+        ],
+    )
+    import json
+    result = json.loads(resp.choices[0].message.content)
+    score = max(1, min(3, int(result.get("score", 2))))
+    return {"aiScore": score, "aiReasoning": result.get("reasoning", "")}
+
+
+# ─────────────────────────────────────────────
+#  Sermon Content Summary
+# ─────────────────────────────────────────────
+
+def summarize_sermon_content(input_data):
+    """Generate a brief overview + key points from the transcript.
+    Returns {"sermonSummary": {"overview": str, "keyPoints": [str]}}."""
+    client = _openai_client()
+    transcript = input_data["transcript"]
+    words = transcript.split()
+    sample = " ".join(words[:4000]) if len(words) > 4000 else transcript
+
+    resp = client.chat.completions.create(
+        model="gpt-5-nano",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "You summarize sermon transcripts concisely."},
+            {"role": "user", "content": f"""Summarize this sermon transcript.
+
+Return JSON:
+{{"overview": "<2-3 sentence summary of the sermon's message and theme>", "keyPoints": ["<key point 1>", "<key point 2>", ...]}}
+
+Include 3-6 key points — the main takeaways a listener should remember.
+
+Transcript:
+{sample}"""},
+        ],
+    )
+    import json
+    result = json.loads(resp.choices[0].message.content)
+    return {"sermonSummary": {"overview": result.get("overview", ""), "keyPoints": result.get("keyPoints", [])}}
+
+
+# ─────────────────────────────────────────────
+#  RSS Audio Download
+# ─────────────────────────────────────────────
+
+def download_rss_audio(input_data):
+    """Download audio from RSS enclosure URL and upload to blob storage.
+    Input: {"sermonId": str, "audioUrl": str}
+    Output: {"blobUrl": str}
+    """
+    import requests as http_requests
+    from azure.storage.blob import BlobClient
+
+    sermon_id = input_data["sermonId"]
+    audio_url = input_data["audioUrl"]
+
+    resp = http_requests.get(audio_url, timeout=300, stream=True)
+    resp.raise_for_status()
+
+    # Determine extension from content-type or URL
+    ct = resp.headers.get("Content-Type", "audio/mpeg")
+    ext_map = {"audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/mp4": ".m4a", "audio/x-m4a": ".m4a"}
+    ext = ext_map.get(ct.split(";")[0].strip(), ".mp3")
+    filename = f"rss-episode{ext}"
+    blob_name = f"{sermon_id}/{filename}"
+
+    audio_bytes = resp.content
+    if len(audio_bytes) > 100 * 1024 * 1024:
+        raise ValueError("RSS audio too large (>100MB)")
+
+    blob = BlobClient.from_connection_string(
+        os.environ["STORAGE_CONNECTION_STRING"], "sermon-audio", blob_name
+    )
+    blob.upload_blob(audio_bytes, content_type=ct.split(";")[0].strip())
+    log.info(f"[download_rss_audio] {sermon_id}: downloaded {len(audio_bytes)} bytes from {audio_url}")
+
+    return {"blobUrl": blob_name}

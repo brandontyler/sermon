@@ -7,6 +7,13 @@ param openaiName string
 param cosmosName string
 param storageName string
 
+@secure()
+param adminKey string
+@secure()
+param webshareProxyUsername string
+@secure()
+param webshareProxyPassword string
+
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: 'psr-kv-${environment}-001'
   location: location
@@ -66,6 +73,24 @@ resource storageConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' 
   parent: kv
   name: 'storage-connection-string'
   properties: { value: 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=${az.environment().suffixes.storage}' }
+}
+
+resource adminKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'admin-key'
+  properties: { value: adminKey }
+}
+
+resource webshareUsernameSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'webshare-proxy-username'
+  properties: { value: webshareProxyUsername }
+}
+
+resource websharePasswordSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: kv
+  name: 'webshare-proxy-password'
+  properties: { value: webshareProxyPassword }
 }
 
 output id string = kv.id

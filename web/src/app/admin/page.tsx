@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, adminFetch } from "@/lib/api";
 import { scoreColor } from "@/lib/types";
 
 interface SermonItem {
@@ -92,7 +92,6 @@ export default function AdminPage() {
 }
 
 function AdminPageInner() {
-  const [adminKey, setAdminKey] = useState("");
   const [sermons, setSermons] = useState<SermonItem[]>([]);
   const [selected, setSelected] = useState<SermonItem | null>(null);
   const [transcript, setTranscript] = useState("");
@@ -123,7 +122,7 @@ function AdminPageInner() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    fetch(apiUrl("/api/sermons"))
+    adminFetch("/api/sermons")
       .then((r) => r.json())
       .then((data) => {
         const complete = data.filter((s: SermonItem) => s.status === "complete");
@@ -163,7 +162,7 @@ function AdminPageInner() {
     setBaRow((p) => ({ ...p, bonus: 0, max: 5, count: 0 }));
     setTwRow((p) => ({ ...p, bonus: 0, max: 5, count: 0 }));
     try {
-      const r = await fetch(apiUrl(`/api/sermons/${s.id}`));
+      const r = await adminFetch(`/api/sermons/${s.id}`);
       const detail = await r.json();
       setTranscript(detail.transcript?.fullText || "");
       setBaRow((p) => ({ ...p, count: detail.categories?.biblicalAccuracy?.score ?? 0 }));
@@ -202,13 +201,13 @@ function AdminPageInner() {
   }
 
   async function applyBonus() {
-    if (!selected || !adminKey) return;
+    if (!selected) return;
     setSaving(true);
     setMessage("");
     try {
-      const r = await fetch(apiUrl(`/api/sermons/${selected.id}/bonus`), {
+      const r = await adminFetch(`/api/sermons/${selected.id}/bonus`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bonus: Math.round(totalBonus * 10) / 10,
           bonusRows: {
@@ -238,17 +237,11 @@ function AdminPageInner() {
         <h1 className="text-base sm:text-lg font-semibold text-gray-900">Admin — Bonus Points</h1>
         <div className="flex gap-3 text-sm">
           <Link href="/admin/manage" className="text-blue-600 hover:underline">Manage</Link>
+          <Link href="/admin/feeds" className="text-blue-600 hover:underline">Feeds</Link>
           <Link href="/sermons" className="text-blue-600 hover:underline">← Sermons</Link>
+          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
         </div>
       </div>
-
-      <input
-        type="password"
-        placeholder="Admin key"
-        value={adminKey}
-        onChange={(e) => setAdminKey(e.target.value)}
-        className="w-full border border-gray-200 rounded px-3 py-2 text-sm mb-4 sm:mb-6"
-      />
 
       <select
         value={selected?.id || ""}
@@ -369,7 +362,7 @@ function AdminPageInner() {
 
           <button
             onClick={applyBonus}
-            disabled={saving || !adminKey || totalBonus === 0}
+            disabled={saving || totalBonus === 0}
             className="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             {saving ? "Applying..." : "Apply"}

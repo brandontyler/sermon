@@ -54,6 +54,9 @@ resource func 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'OPENAI_API_VERSION', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/openai-api-version/)' }
         { name: 'COSMOS_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/cosmos-connection-string/)' }
         { name: 'STORAGE_CONNECTION_STRING', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/storage-connection-string/)' }
+        { name: 'ADMIN_KEY', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/admin-key/)' }
+        { name: 'WEBSHARE_PROXY_USERNAME', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/webshare-proxy-username/)' }
+        { name: 'WEBSHARE_PROXY_PASSWORD', value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/webshare-proxy-password/)' }
       ]
     }
   }

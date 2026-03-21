@@ -28,7 +28,7 @@ export default function ScoreGauge({ score }: { score: number }) {
     <div className="relative w-[200px] h-[200px]" role="img" aria-label={`PSR score: ${score.toFixed(1)} out of 100`}>
       <svg viewBox="0 0 200 200" className="w-full h-full">
         {/* Background arc */}
-        <path d={arcPath(startAngle, endAngle)} fill="none" stroke="#e5e7eb" strokeWidth={stroke} strokeLinecap="round" />
+        <path d={arcPath(startAngle, endAngle)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={stroke} strokeLinecap="round" />
         {/* Score arc */}
         {score > 0 && (
           <path d={arcPath(startAngle, scoreAngle)} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" />

@@ -1,6 +1,35 @@
 {
   "routes": [
     {
+      "route": "/.auth/login/github",
+      "statusCode": 404
+    },
+    {
+      "route": "/api/feeds*",
+      "methods": ["GET", "POST", "PATCH", "DELETE"],
+      "allowedRoles": ["admin"]
+    },
+    {
+      "route": "/api/sermons/*",
+      "methods": ["DELETE", "PATCH"],
+      "allowedRoles": ["admin"]
+    },
+    {
+      "route": "/api/rescore",
+      "methods": ["POST"],
+      "allowedRoles": ["admin"]
+    },
+    {
+      "route": "/api/churches",
+      "methods": ["POST"],
+      "allowedRoles": ["admin"]
+    },
+    {
+      "route": "/api/churches/*",
+      "methods": ["DELETE"],
+      "allowedRoles": ["admin"]
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["anonymous"]
     },
@@ -11,8 +40,24 @@
       }
     },
     {
+      "route": "/admin/feeds",
+      "allowedRoles": ["admin"],
+      "rewrite": "/admin/feeds.html"
+    },
+    {
+      "route": "/admin/manage",
+      "allowedRoles": ["admin"],
+      "rewrite": "/admin/manage.html"
+    },
+    {
       "route": "/admin",
+      "allowedRoles": ["admin"],
       "rewrite": "/admin.html"
+    },
+    {
+      "route": "/church-admin",
+      "allowedRoles": ["admin"],
+      "rewrite": "/church-admin.html"
     },
     {
       "route": "/dashboard",
@@ -27,10 +72,6 @@
       "rewrite": "/churches.html"
     },
     {
-      "route": "/church-admin",
-      "rewrite": "/church-admin.html"
-    },
-    {
       "route": "/sermons",
       "rewrite": "/sermons.html"
     },
@@ -43,6 +84,12 @@
       "rewrite": "/sermons/placeholder.html"
     }
   ],
+  "responseOverrides": {
+    "401": {
+      "redirect": "/.auth/login/aad?post_login_redirect_uri=.referrer",
+      "statusCode": 302
+    }
+  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/api/*", "/_next/*", "/favicon.ico"]

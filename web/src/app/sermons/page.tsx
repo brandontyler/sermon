@@ -72,12 +72,13 @@ export default function SermonsPage() {
   return (
     <div className="max-w-[960px] mx-auto p-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">PSR — Pastor Sermon Rating</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">Upload →</Link>
+        <Link href="/" className="text-sm text-blue-600 hover:underline">← Home</Link>
+        <Link href="/upload" className="text-sm text-blue-600 hover:underline">Upload →</Link>
       </div>
       <div className="flex gap-4 mb-4">
         <Link href="/churches" className="text-sm text-blue-600 hover:underline">Find a Church</Link>
         <Link href="/admin/manage" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">Admin</Link>
+        <Link href="/calculations" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">Calculations</Link>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
@@ -96,7 +97,7 @@ export default function SermonsPage() {
       ) : error ? (
         <p className="text-red-500 text-sm">{error}</p>
       ) : sorted.length === 0 ? (
-        <p className="text-gray-400 text-sm">No sermons yet. <Link href="/" className="text-blue-600 hover:underline">Upload one.</Link></p>
+        <p className="text-gray-400 text-sm">No sermons yet. <Link href="/upload" className="text-blue-600 hover:underline">Upload one.</Link></p>
       ) : (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">

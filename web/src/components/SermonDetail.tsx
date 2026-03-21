@@ -161,7 +161,7 @@ export default function SermonDetailClient() {
           <p className="text-lg font-medium text-gray-900 mb-2">Something went wrong analyzing this sermon.</p>
           {sermon.error && <p className="text-sm text-gray-500 mb-6">Error: {sermon.error}</p>}
           <div className="flex gap-4 justify-center">
-            <Link href="/" className="text-sm text-blue-600 hover:underline">Try Again</Link>
+            <Link href="/upload" className="text-sm text-blue-600 hover:underline">Try Again</Link>
             <Link href="/sermons" className="text-sm text-gray-500 hover:underline">Back to sermons</Link>
           </div>
         </div>
@@ -183,6 +183,8 @@ export default function SermonDetailClient() {
             )}
             {sermon.summary && <p className="text-sm text-gray-500 italic mt-4 text-center max-w-md">{sermon.summary}</p>}
           </div>
+
+          {sermon.aiScore != null && <AiStoplight score={sermon.aiScore} reasoning={sermon.aiReasoning} />}
 
           <div className="mt-10 flex justify-center">
             <RadarView categories={sermon.categories} />
@@ -229,6 +231,23 @@ export default function SermonDetailClient() {
                     ))}
                   </ul>
                 </div>
+              )}
+            </div>
+          )}
+
+          {sermon.sermonSummary && (
+            <div className="mt-10 bg-white border border-gray-200 rounded-lg p-5">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">📝 Sermon Summary</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">{sermon.sermonSummary.overview}</p>
+              {sermon.sermonSummary.keyPoints?.length > 0 && (
+                <ul className="mt-3 space-y-1.5">
+                  {sermon.sermonSummary.keyPoints.map((point, i) => (
+                    <li key={i} className="text-sm text-gray-600 flex gap-2">
+                      <span className="text-blue-400 mt-0.5 shrink-0">•</span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}
@@ -343,6 +362,33 @@ function CategoryCard({ name, weight, score, reasoning }: { name: string; weight
         {open ? "▾ Hide reasoning" : "▸ View reasoning"}
       </button>
       {open && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{reasoning}</p>}
+    </div>
+  );
+}
+
+function AiStoplight({ score, reasoning }: { score: 1 | 2 | 3; reasoning?: string | null }) {
+  const config = {
+    1: { color: "bg-green-500", ring: "ring-green-500/30", label: "Human", desc: "No AI detected" },
+    2: { color: "bg-yellow-400", ring: "ring-yellow-400/30", label: "Uncertain", desc: "Possible AI" },
+    3: { color: "bg-red-500", ring: "ring-red-500/30", label: "AI Detected", desc: "Likely AI-generated" },
+  }[score];
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-6 flex flex-col items-center">
+      <div className="bg-gray-900 rounded-full px-4 py-2 flex items-center gap-3">
+        {[1, 2, 3].map((n) => (
+          <div key={n} className={`w-4 h-4 rounded-full ${n === score ? `${config.color} ring-2 ${config.ring}` : "bg-gray-700"}`} />
+        ))}
+      </div>
+      <span className="text-xs text-gray-500 mt-2">{config.label} — {config.desc}</span>
+      {reasoning && (
+        <>
+          <button onClick={() => setOpen(!open)} className="text-xs text-gray-400 hover:text-gray-600 mt-1">
+            {open ? "▾ Hide" : "▸ Why?"}
+          </button>
+          {open && <p className="text-xs text-gray-500 mt-1 text-center max-w-sm">{reasoning}</p>}
+        </>
+      )}
     </div>
   );
 }

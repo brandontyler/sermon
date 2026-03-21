@@ -11,6 +11,7 @@ import azure.durable_functions as df
 
 from schema import (
     new_sermon_doc,
+    new_feed_doc,
     normalize_scores,
     compute_composite,
     fail_sermon_doc,
@@ -18,6 +19,7 @@ from schema import (
     PIPELINE_VERSION,
     SCORING_MODELS,
     PASS_HASHES,
+    UNASSIGNED_CHURCH_ID,
 )
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -34,6 +36,31 @@ ALLOWED_TYPES = {
     "audio/x-m4a": ".m4a",
 }
 MAX_SIZE = 100 * 1024 * 1024  # 100MB
+
+
+def _require_admin(req):
+    """Check SWA client principal (Entra ID) or fallback to admin key.
+
+    Returns None if authorized, or an HttpResponse 401 if not.
+    """
+    # Check SWA x-ms-client-principal header first
+    principal = req.headers.get("x-ms-client-principal")
+    if principal:
+        import base64
+        try:
+            data = json.loads(base64.b64decode(principal))
+            if "admin" in data.get("userRoles", []):
+                return None
+        except Exception:
+            pass
+
+    # Fallback: admin key (for CLI, direct API, timer triggers)
+    admin_key = os.environ.get("ADMIN_KEY", "")
+    provided = req.headers.get("x-admin-key", "") or req.params.get("key", "")
+    if admin_key and provided == admin_key:
+        return None
+
+    return _json_response({"error": "Unauthorized"}, 401)
 
 
 # ─────────────────────────────────────────────
@@ -603,10 +630,9 @@ async def apply_bonus(req: func.HttpRequest) -> func.HttpResponse:
     import os
     from azure.cosmos import CosmosClient, exceptions
 
-    admin_key = os.environ.get("ADMIN_KEY", "")
-    provided = req.headers.get("x-admin-key", "")
-    if not admin_key or provided != admin_key:
-        return _json_response({"error": "Unauthorized"}, 401)
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
 
     sermon_id = req.route_params.get("sermon_id")
     try:
@@ -651,10 +677,9 @@ async def delete_sermon(req: func.HttpRequest) -> func.HttpResponse:
     from azure.cosmos import CosmosClient, exceptions
     from azure.storage.blob import ContainerClient
 
-    admin_key = os.environ.get("ADMIN_KEY", "")
-    provided = req.headers.get("x-admin-key", "")
-    if not admin_key or provided != admin_key:
-        return _json_response({"error": "Unauthorized"}, 401)
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
 
     sermon_id = req.route_params.get("sermon_id")
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
@@ -688,10 +713,9 @@ async def edit_sermon(req: func.HttpRequest) -> func.HttpResponse:
     import os
     from azure.cosmos import CosmosClient, exceptions
 
-    admin_key = os.environ.get("ADMIN_KEY", "")
-    provided = req.headers.get("x-admin-key", "")
-    if not admin_key or provided != admin_key:
-        return _json_response({"error": "Unauthorized"}, 401)
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
 
     sermon_id = req.route_params.get("sermon_id")
     try:
@@ -777,17 +801,16 @@ async def upsert_church(req: func.HttpRequest) -> func.HttpResponse:
     import os
     from azure.cosmos import CosmosClient
 
-    admin_key = os.environ.get("ADMIN_KEY", "")
-    provided = req.headers.get("x-admin-key", "")
-    if not admin_key or provided != admin_key:
-        return _json_response({"error": "Unauthorized"}, 401)
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
 
     try:
         body = req.get_json()
     except Exception:
         return _json_response({"error": "Invalid JSON"}, 400)
 
-    required = ["id", "name", "city", "state"]
+    required = ["id", "name"]
     if not all(body.get(k) for k in required):
         return _json_response({"error": f"Required fields: {required}"}, 400)
 
@@ -812,10 +835,9 @@ async def delete_church(req: func.HttpRequest) -> func.HttpResponse:
     import os
     from azure.cosmos import CosmosClient, exceptions
 
-    admin_key = os.environ.get("ADMIN_KEY", "")
-    provided = req.headers.get("x-admin-key", "")
-    if not admin_key or provided != admin_key:
-        return _json_response({"error": "Unauthorized"}, 401)
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
 
     church_id = req.route_params.get("church_id")
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
@@ -835,6 +857,366 @@ def _json_response(body, status=200):
         status_code=status,
         mimetype="application/json",
     )
+
+
+# ─────────────────────────────────────────────
+#  RSS Feed Subscription
+# ─────────────────────────────────────────────
+
+def _feeds_container():
+    """Get or create the feeds Cosmos container."""
+    from azure.cosmos import CosmosClient
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    db = cosmos.get_database_client("psr")
+    try:
+        return db.create_container_if_not_exists(id="feeds", partition_key={"paths": ["/id"], "kind": "Hash"})
+    except Exception:
+        return db.get_container_client("feeds")
+
+
+@app.route(route="feeds", methods=["GET"])
+@app.function_name("list_feeds")
+async def list_feeds(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/feeds — List all RSS feed subscriptions."""
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
+
+    container = _feeds_container()
+    items = list(container.query_items("SELECT * FROM c ORDER BY c.createdAt DESC", enable_cross_partition_query=True))
+    for item in items:
+        for key in ("_rid", "_self", "_etag", "_attachments", "_ts"):
+            item.pop(key, None)
+
+    # Enrich with scored + processing episode counts
+    from azure.cosmos import CosmosClient
+    sermon_container = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"]).get_database_client("psr").get_container_client("sermons")
+    for feed in items:
+        try:
+            rows = list(sermon_container.query_items(
+                "SELECT c.status, COUNT(1) as cnt FROM c WHERE c.feedId = @fid GROUP BY c.status",
+                parameters=[{"name": "@fid", "value": feed["id"]}],
+                enable_cross_partition_query=True,
+            ))
+            counts = {r["status"]: r["cnt"] for r in rows}
+            feed["episodeCount"] = counts.get("complete", 0)
+            feed["processingCount"] = counts.get("processing", 0)
+        except Exception:
+            feed["episodeCount"] = 0
+            feed["processingCount"] = 0
+
+    return _json_response(items)
+
+
+@app.route(route="feeds", methods=["POST"])
+@app.function_name("create_feed")
+async def create_feed(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/feeds — Subscribe to an RSS feed."""
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
+
+    try:
+        body = req.get_json()
+    except Exception:
+        return _json_response({"error": "Invalid JSON"}, 400)
+
+    feed_url = body.get("feedUrl", "").strip()
+    if not feed_url:
+        return _json_response({"error": "feedUrl is required"}, 400)
+
+    backfill = min(body.get("backfillCount", 0), 50)  # cap at 50
+
+    # Validate + preview the feed
+    import feedparser
+    parsed = feedparser.parse(feed_url)
+    if not parsed.entries:
+        return _json_response({"error": "No episodes found in feed. Check the URL."}, 400)
+
+    title = body.get("title") or parsed.feed.get("title", feed_url)
+    feed_id = f"feed-{uuid.uuid4().hex[:8]}"
+    doc = new_feed_doc(feed_id, feed_url, title, backfill)
+    _feeds_container().create_item(doc)
+
+    log.info(f"[create_feed] {feed_id}: {title} ({feed_url}), backfill={backfill}")
+    return _json_response(doc, 201)
+
+
+@app.route(route="feeds/{feed_id}", methods=["PATCH"])
+@app.function_name("update_feed")
+async def update_feed(req: func.HttpRequest) -> func.HttpResponse:
+    """PATCH /api/feeds/{id} — Toggle active/pause or update settings."""
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
+
+    feed_id = req.route_params.get("feed_id")
+    try:
+        body = req.get_json()
+    except Exception:
+        return _json_response({"error": "Invalid JSON"}, 400)
+
+    container = _feeds_container()
+    from azure.cosmos import exceptions
+    try:
+        doc = container.read_item(feed_id, partition_key=feed_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Feed not found"}, 404)
+
+    for key in ("active", "title", "backfillCount"):
+        if key in body:
+            doc[key] = body[key]
+    container.upsert_item(doc)
+    return _json_response({"id": feed_id, "active": doc["active"]})
+
+
+@app.route(route="feeds/{feed_id}", methods=["DELETE"])
+@app.function_name("delete_feed")
+async def delete_feed(req: func.HttpRequest) -> func.HttpResponse:
+    """DELETE /api/feeds/{id} — Remove a feed subscription."""
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
+
+    feed_id = req.route_params.get("feed_id")
+    container = _feeds_container()
+    from azure.cosmos import exceptions
+    try:
+        container.delete_item(feed_id, partition_key=feed_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Feed not found"}, 404)
+
+    log.info(f"[delete_feed] {feed_id}")
+    return _json_response({"deleted": feed_id})
+
+
+@app.route(route="feeds/poll", methods=["POST"])
+@app.durable_client_input(client_name="starter")
+@app.function_name("poll_feeds_manual")
+async def poll_feeds_manual(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
+    """POST /api/feeds/poll — Manually trigger feed polling (admin only)."""
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
+
+    body = req.get_body()
+    feed_ids = None
+    if body:
+        try:
+            feed_ids = json.loads(body).get("feedIds")
+        except Exception:
+            pass
+    results = await _poll_all_feeds(starter, feed_ids=feed_ids)
+    return _json_response({"polled": len(results), "results": results})
+
+
+@app.route(route="feeds/preview", methods=["GET"])
+@app.function_name("preview_feeds")
+async def preview_feeds(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/feeds/preview — Preview new episode counts without submitting."""
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
+    results = await _preview_feeds()
+    total = sum(r["newCount"] for r in results)
+    return _json_response({"feeds": results, "totalNew": total, "estimatedCost": round(total * 0.75, 2)})
+
+
+async def _preview_feeds():
+    """Count new episodes per active feed without submitting anything."""
+    import datetime
+    import feedparser
+    from azure.cosmos import CosmosClient
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    db = cosmos.get_database_client("psr")
+    feed_container = _feeds_container()
+    sermon_container = db.get_container_client("sermons")
+
+    feeds = list(feed_container.query_items(
+        "SELECT * FROM c WHERE c.active = true", enable_cross_partition_query=True
+    ))
+
+    results = []
+    for feed_doc in feeds:
+        feed_id = feed_doc["id"]
+        try:
+            parsed = feedparser.parse(feed_doc["feedUrl"])
+            if not parsed.entries:
+                results.append({"feedId": feed_id, "title": feed_doc.get("title", ""), "newCount": 0})
+                continue
+
+            existing = list(sermon_container.query_items(
+                "SELECT c.feedGuid FROM c WHERE c.feedId = @fid",
+                parameters=[{"name": "@fid", "value": feed_id}],
+                enable_cross_partition_query=True,
+            ))
+            known_guids = {e["feedGuid"] for e in existing if e.get("feedGuid")}
+
+            entries = parsed.entries
+            if not feed_doc.get("lastPolledAt") and feed_doc.get("backfillCount", 0) > 0:
+                entries = entries[:feed_doc["backfillCount"]]
+            elif feed_doc.get("lastPolledAt"):
+                from email.utils import parsedate_to_datetime
+                sub_dt = datetime.datetime.fromisoformat(feed_doc["createdAt"].replace("Z", "+00:00"))
+                entries = [e for e in entries if e.get("published_parsed") and
+                    datetime.datetime(*e["published_parsed"][:6], tzinfo=datetime.timezone.utc) >= sub_dt]
+
+            new_count = 0
+            for entry in entries:
+                guid = entry.get("id") or entry.get("link", "")
+                if guid in known_guids:
+                    continue
+                # Check for audio enclosure
+                has_audio = any(enc.get("type", "").startswith("audio/") for enc in entry.get("enclosures", []))
+                if not has_audio:
+                    has_audio = any(link.get("type", "").startswith("audio/") for link in entry.get("links", []))
+                if has_audio:
+                    new_count += 1
+
+            results.append({"feedId": feed_id, "title": feed_doc.get("title", ""), "newCount": new_count})
+        except Exception as e:
+            log.error(f"[preview_feed] {feed_id} failed: {e}", exc_info=True)
+            results.append({"feedId": feed_id, "title": feed_doc.get("title", ""), "newCount": 0, "error": str(e)})
+
+    return results
+
+
+@app.timer_trigger(schedule="0 0 */12 * * *", arg_name="timer", run_on_startup=False)
+@app.durable_client_input(client_name="starter")
+@app.function_name("poll_feeds_timer")
+async def poll_feeds_timer(timer: func.TimerRequest, starter: df.DurableOrchestrationClient):
+    """Timer: poll RSS feeds every 12 hours."""
+    if timer.past_due:
+        log.info("[poll_feeds_timer] Timer is past due, running anyway")
+    results = await _poll_all_feeds(starter)
+    log.info(f"[poll_feeds_timer] Polled feeds, submitted {sum(r.get('new', 0) for r in results)} new episodes")
+
+
+async def _poll_all_feeds(starter: df.DurableOrchestrationClient, feed_ids=None):
+    """Poll active feeds, submit new episodes for scoring. Optionally filter by feed_ids."""
+    import datetime
+    import feedparser
+    from azure.cosmos import CosmosClient
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    db = cosmos.get_database_client("psr")
+    feed_container = _feeds_container()
+    sermon_container = db.get_container_client("sermons")
+
+    feeds = list(feed_container.query_items(
+        "SELECT * FROM c WHERE c.active = true", enable_cross_partition_query=True
+    ))
+    if feed_ids:
+        feed_ids_set = set(feed_ids)
+        feeds = [f for f in feeds if f["id"] in feed_ids_set]
+
+    results = []
+    for feed_doc in feeds:
+        feed_id = feed_doc["id"]
+        try:
+            parsed = feedparser.parse(feed_doc["feedUrl"])
+            if not parsed.entries:
+                results.append({"feedId": feed_id, "new": 0, "error": "No entries"})
+                continue
+
+            # Get already-scored GUIDs for this feed
+            existing = list(sermon_container.query_items(
+                "SELECT c.feedGuid FROM c WHERE c.feedId = @fid",
+                parameters=[{"name": "@fid", "value": feed_id}],
+                enable_cross_partition_query=True,
+            ))
+            known_guids = {e["feedGuid"] for e in existing if e.get("feedGuid")}
+
+            # Determine which entries to process
+            entries = parsed.entries
+            if not feed_doc.get("lastPolledAt") and feed_doc.get("backfillCount", 0) > 0:
+                # First poll — backfill last N
+                entries = entries[:feed_doc["backfillCount"]]
+            elif feed_doc.get("lastPolledAt"):
+                # Subsequent polls — only episodes published after subscription
+                import time as _time
+                from email.utils import parsedate_to_datetime
+                sub_dt = datetime.datetime.fromisoformat(feed_doc["createdAt"].replace("Z", "+00:00"))
+                filtered = []
+                for e in entries:
+                    pub = e.get("published_parsed")
+                    if pub:
+                        pub_dt = datetime.datetime(*pub[:6], tzinfo=datetime.timezone.utc)
+                        if pub_dt >= sub_dt:
+                            filtered.append(e)
+                entries = filtered
+
+            new_count = 0
+            for entry in entries:
+                guid = entry.get("id") or entry.get("link", "")
+                if guid in known_guids:
+                    continue
+
+                # Find audio enclosure
+                audio_url = None
+                for enc in entry.get("enclosures", []):
+                    if enc.get("type", "").startswith("audio/"):
+                        audio_url = enc.get("href") or enc.get("url")
+                        break
+                if not audio_url:
+                    # Try link as fallback for some feeds
+                    for link in entry.get("links", []):
+                        if link.get("type", "").startswith("audio/"):
+                            audio_url = link.get("href")
+                            break
+                if not audio_url:
+                    continue  # skip non-audio entries
+
+                # Create sermon doc + start orchestrator
+                sermon_id = str(uuid.uuid4())
+                title = entry.get("title", "Untitled Episode")
+                pastor = entry.get("author") or None
+                pub = entry.get("published_parsed")
+                date = f"{pub.tm_year}-{pub.tm_mon:02d}-{pub.tm_mday:02d}" if pub else None
+                doc = new_sermon_doc(sermon_id, f"rss-{feed_id}", title, pastor=pastor)
+                if date:
+                    doc["date"] = date
+                doc["feedId"] = feed_id
+                doc["feedGuid"] = guid
+                doc["inputType"] = "rss"
+                doc["uploadedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+                doc["rssAudioUrl"] = audio_url
+                doc["rssMeta"] = {
+                    "subtitle": entry.get("subtitle") or None,
+                    "summary": entry.get("summary") or None,
+                    "link": entry.get("link") or None,
+                    "image": (entry.get("image") or {}).get("href") or None,
+                }
+                sermon_container.create_item(doc)
+
+                await starter.start_new("rss_sermon_orchestrator", client_input={
+                    "sermonId": sermon_id,
+                    "audioUrl": audio_url,
+                    "userTitle": title,
+                })
+                new_count += 1
+                known_guids.add(guid)
+                log.info(f"[poll_feed] {feed_id}: submitted '{title}' ({sermon_id})")
+
+            # Update feed metadata
+            feed_doc["lastPolledAt"] = datetime.datetime.utcnow().isoformat() + "Z"
+            feed_doc["lastPollResult"] = {"new": new_count, "errors": 0, "timestamp": feed_doc["lastPolledAt"]}
+            if entries:
+                feed_doc["lastSeenGuid"] = entries[0].get("id") or entries[0].get("link", "")
+            feed_container.upsert_item(feed_doc)
+            results.append({"feedId": feed_id, "new": new_count})
+
+        except Exception as e:
+            log.error(f"[poll_feed] {feed_id} failed: {e}", exc_info=True)
+            feed_doc["lastPollResult"] = {"new": 0, "errors": 1, "timestamp": datetime.datetime.utcnow().isoformat() + "Z"}
+            try:
+                feed_container.upsert_item(feed_doc)
+            except Exception:
+                pass
+            results.append({"feedId": feed_id, "new": 0, "error": str(e)})
+
+    return results
 
 
 # ─────────────────────────────────────────────
@@ -937,6 +1319,16 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             {"transcript": transcript_text},
         )
 
+        ai_detect_task = context.call_activity_with_retry(
+            "activity_detect_ai", RETRY_LIGHT,
+            {"transcript": transcript_text},
+        )
+
+        content_summary_task = context.call_activity_with_retry(
+            "activity_summarize_content", RETRY_LIGHT,
+            {"transcript": transcript_text},
+        )
+
         # Fan-in
         pass1 = yield pass1_task
         pass2 = yield pass2_task
@@ -957,6 +1349,23 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             enrichment = None
             if not context.is_replaying:
                 log.warning(f"[orchestrator] {sermon_id}: pass4 enrichment failed ({e}), skipping")
+
+        try:
+            ai_result = yield ai_detect_task
+            ai_score = ai_result.get("aiScore")
+            ai_reasoning = ai_result.get("aiReasoning")
+        except Exception as e:
+            ai_score = None
+            ai_reasoning = None
+            if not context.is_replaying:
+                log.warning(f"[orchestrator] {sermon_id}: AI detection failed ({e}), skipping")
+
+        try:
+            content_summary = (yield content_summary_task).get("sermonSummary")
+        except Exception as e:
+            content_summary = None
+            if not context.is_replaying:
+                log.warning(f"[orchestrator] {sermon_id}: content summary failed ({e}), skipping")
 
         # ── Normalize + composite ──
         _set_status(context, sermon_id, "finalizing")
@@ -1003,6 +1412,9 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "audioMetrics": audio_metrics,
             "wpmFlag": wpm_flag,
             "enrichment": enrichment,
+            "aiScore": ai_score,
+            "aiReasoning": ai_reasoning,
+            "sermonSummary": content_summary,
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
             "passVersions": PASS_HASHES,
@@ -1017,6 +1429,7 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
         try:
             yield context.call_activity_with_retry("activity_ensure_church", RETRY_LIGHT, {
                 "pastor": classification["pastor"],
+                "sermonId": sermon_id,
             })
         except Exception as e:
             if not context.is_replaying:
@@ -1126,6 +1539,16 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             {"transcript": transcript_text},
         )
 
+        ai_detect_task = context.call_activity_with_retry(
+            "activity_detect_ai", RETRY_LIGHT,
+            {"transcript": transcript_text},
+        )
+
+        content_summary_task = context.call_activity_with_retry(
+            "activity_summarize_content", RETRY_LIGHT,
+            {"transcript": transcript_text},
+        )
+
         pass1 = yield pass1_task
         pass2 = yield pass2_task
         pass3 = yield pass3_task
@@ -1141,6 +1564,19 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             enrichment = enrichment_result.get("enrichment")
         except Exception:
             enrichment = None
+
+        try:
+            ai_result = yield ai_detect_task
+            ai_score = ai_result.get("aiScore")
+            ai_reasoning = ai_result.get("aiReasoning")
+        except Exception:
+            ai_score = None
+            ai_reasoning = None
+
+        try:
+            content_summary = (yield content_summary_task).get("sermonSummary")
+        except Exception:
+            content_summary = None
 
         # ── Normalize + composite ──
         _set_status(context, sermon_id, "finalizing")
@@ -1185,6 +1621,9 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "inputType": "text",
             "wpmFlag": False,
             "enrichment": enrichment,
+            "aiScore": ai_score,
+            "aiReasoning": ai_reasoning,
+            "sermonSummary": content_summary,
             "pipelineVersion": PIPELINE_VERSION,
             "scoringModels": SCORING_MODELS,
             "passVersions": PASS_HASHES,
@@ -1199,6 +1638,7 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
         try:
             yield context.call_activity_with_retry("activity_ensure_church", RETRY_LIGHT, {
                 "pastor": classification["pastor"],
+                "sermonId": sermon_id,
             })
         except Exception as e:
             if not context.is_replaying:
@@ -1223,6 +1663,153 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
                 )
 
 
+@bp.orchestration_trigger(context_name="context")
+def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
+    """Pipeline for RSS episodes: download audio → upload to blob → run normal audio pipeline."""
+    input_data = context.get_input()
+    sermon_id = input_data["sermonId"]
+    audio_url = input_data["audioUrl"]
+
+    try:
+        _set_status(context, sermon_id, "downloading")
+
+        # Download audio and upload to blob
+        blob_result = yield context.call_activity_with_retry(
+            "activity_download_rss_audio", RETRY_TRANSCRIBE,
+            {"sermonId": sermon_id, "audioUrl": audio_url},
+        )
+        blob_url = blob_result["blobUrl"]
+
+        # Now run the same pipeline as audio upload
+        _set_status(context, sermon_id, "transcribing")
+
+        transcribe_task = context.call_activity_with_retry(
+            "activity_transcribe", RETRY_TRANSCRIBE,
+            {"blobUrl": blob_url, "sermonId": sermon_id},
+        )
+        audio_task = context.call_activity_with_retry(
+            "activity_analyze_audio", RETRY_LIGHT,
+            {"blobUrl": blob_url},
+        )
+
+        transcript_result = yield transcribe_task
+        try:
+            audio_metrics = yield audio_task
+        except Exception as e:
+            audio_metrics = None
+            if not context.is_replaying:
+                log.warning(f"[rss_orchestrator] {sermon_id}: Parselmouth failed ({e})")
+
+        transcript_text = transcript_result["fullText"]
+        wpm = transcript_result["wpm"]
+        wpm_flag = wpm < 80 or wpm > 200
+
+        _set_status(context, sermon_id, "scoring")
+
+        pass1_task = context.call_activity_with_retry("activity_pass1_biblical", RETRY_LLM, {"transcript": transcript_text})
+        pass2_task = context.call_activity_with_retry("activity_pass2_structure", RETRY_LLM, {"transcript": transcript_text})
+        pass3_task = context.call_activity_with_retry("activity_pass3_delivery", RETRY_LLM, {
+            "transcript": transcript_text, "audioMetrics": audio_metrics or _default_audio_metrics(),
+            "wpm": wpm, "audioAvailable": audio_metrics is not None,
+        })
+        classify_task = context.call_activity_with_retry("activity_classify_sermon", RETRY_LLM, {
+            "transcript": transcript_text, "userTitle": input_data.get("userTitle"), "userPastor": None,
+        })
+        segment_task = context.call_activity_with_retry("activity_classify_segments", RETRY_LIGHT, {"segments": transcript_result["segments"]})
+        pass4_task = context.call_activity_with_retry("activity_pass4_enrichment", RETRY_LLM, {"transcript": transcript_text})
+        ai_detect_task = context.call_activity_with_retry("activity_detect_ai", RETRY_LIGHT, {"transcript": transcript_text})
+        content_summary_task = context.call_activity_with_retry("activity_summarize_content", RETRY_LIGHT, {"transcript": transcript_text})
+
+        pass1 = yield pass1_task
+        pass2 = yield pass2_task
+        pass3 = yield pass3_task
+        classification = yield classify_task
+
+        try:
+            classified_segments = yield segment_task
+        except Exception:
+            classified_segments = transcript_result["segments"]
+        try:
+            enrichment = (yield pass4_task).get("enrichment")
+        except Exception:
+            enrichment = None
+        try:
+            ai_result = yield ai_detect_task
+            ai_score, ai_reasoning = ai_result.get("aiScore"), ai_result.get("aiReasoning")
+        except Exception:
+            ai_score = ai_reasoning = None
+        try:
+            content_summary = (yield content_summary_task).get("sermonSummary")
+        except Exception:
+            content_summary = None
+
+        _set_status(context, sermon_id, "finalizing")
+
+        raw_scores = {**pass1, **pass2, **pass3}
+        sermon_type = classification["sermonType"]
+        confidence = classification["confidence"]
+        categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
+        composite = compute_composite(categories)
+        raw_score_map = {k: raw_scores[k]["score"] for k in raw_scores}
+
+        summary_result = yield context.call_activity_with_retry(
+            "activity_generate_summary", RETRY_LIGHT,
+            {"categories": categories, "sermonType": sermon_type},
+        )
+
+        duration_seconds = round(transcript_result["durationMs"] / 1000)
+        updates = {
+            "status": "complete",
+            "title": classification["title"],
+            "pastor": classification["pastor"],
+            "duration": duration_seconds,
+            "sermonType": sermon_type,
+            "compositePsr": composite,
+            "summary": summary_result.get("summary"),
+            "categories": categories,
+            "strengths": summary_result.get("strengths"),
+            "improvements": summary_result.get("improvements"),
+            "transcript": {"fullText": transcript_text, "segments": classified_segments},
+            "classificationConfidence": confidence,
+            "normalizationApplied": norm_applied,
+            "rawScores": raw_score_map,
+            "audioMetrics": audio_metrics,
+            "wpmFlag": wpm_flag,
+            "enrichment": enrichment,
+            "aiScore": ai_score,
+            "aiReasoning": ai_reasoning,
+            "sermonSummary": content_summary,
+            "blobUrl": blob_url,
+            "pipelineVersion": PIPELINE_VERSION,
+            "scoringModels": SCORING_MODELS,
+            "passVersions": PASS_HASHES,
+        }
+
+        yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
+            "sermonId": sermon_id, "updates": updates,
+        })
+
+        try:
+            yield context.call_activity_with_retry("activity_ensure_church", RETRY_LIGHT, {
+                "pastor": classification["pastor"], "sermonId": sermon_id,
+            })
+        except Exception:
+            pass
+
+        _set_status(context, sermon_id, "complete")
+
+    except Exception as e:
+        if not context.is_replaying:
+            log.error(f"[rss_orchestrator] {sermon_id}: pipeline failed: {e}", exc_info=True)
+        _set_status(context, sermon_id, "failed")
+        try:
+            yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
+                "sermonId": sermon_id, "updates": fail_sermon_doc(str(e)),
+            })
+        except Exception:
+            pass
+
+
 # ─────────────────────────────────────────────
 #  Admin: Batch Rescore (function key auth)
 # ─────────────────────────────────────────────
@@ -1232,11 +1819,9 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
 @app.function_name("admin_rescore")
 async def admin_rescore(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
     """POST /api/admin/rescore — Re-score sermons with current models. Requires admin key."""
-    import os
-    admin_key = os.environ.get("ADMIN_KEY", "")
-    provided = req.headers.get("x-admin-key", "") or req.params.get("key", "")
-    if not admin_key or provided != admin_key:
-        return _json_response({"error": "Unauthorized"}, 401)
+    auth_err = _require_admin(req)
+    if auth_err:
+        return auth_err
     body = req.get_json() if req.get_body() else {}
     sermon_ids = body.get("sermonIds")
     rescore_all = body.get("all", False)
@@ -1301,7 +1886,8 @@ def rescore_orchestrator(context: df.DurableOrchestrationContext):
 from activities import (
     transcribe, analyze_audio, pass1_biblical, pass2_structure,
     pass3_delivery, pass4_enrichment, classify_sermon, classify_segments,
-    generate_summary, update_sermon, rescore_sermon,
+    generate_summary, update_sermon, rescore_sermon, detect_ai_generation,
+    summarize_sermon_content, download_rss_audio,
 )
 
 
@@ -1366,8 +1952,21 @@ def activity_ensure_church(input: dict):
     return _run_activity("ensure_church", ensure_church, input)
 
 @bp.activity_trigger(input_name="input")
+def activity_detect_ai(input: dict):
+    return _run_activity("detect_ai", detect_ai_generation, input)
+
+@bp.activity_trigger(input_name="input")
+def activity_summarize_content(input: dict):
+    return _run_activity("summarize_content", summarize_sermon_content, input)
+
+@bp.activity_trigger(input_name="input")
 def activity_rescore_sermon(input: dict):
     return _run_activity("rescore_sermon", rescore_sermon, input)
+
+
+@bp.activity_trigger(input_name="input")
+def activity_download_rss_audio(input: dict):
+    return _run_activity("download_rss_audio", download_rss_audio, input)
 
 
 app.register_functions(bp)
