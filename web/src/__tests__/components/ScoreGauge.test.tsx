@@ -2,9 +2,9 @@ import { render, screen } from "@testing-library/react";
 import ScoreGauge from "@/components/ScoreGauge";
 
 describe("ScoreGauge", () => {
-  it("renders the score number", () => {
+  it("renders the score number with one decimal", () => {
     render(<ScoreGauge score={83} />);
-    expect(screen.getByText("83")).toBeInTheDocument();
+    expect(screen.getByText("83.0")).toBeInTheDocument();
     expect(screen.getByText("/100")).toBeInTheDocument();
   });
 
@@ -12,25 +12,25 @@ describe("ScoreGauge", () => {
     render(<ScoreGauge score={75} />);
     expect(screen.getByRole("img")).toHaveAttribute(
       "aria-label",
-      "PSR score: 75 out of 100"
+      "PSR score: 75.0 out of 100"
     );
   });
 
-  it("uses green color for score >= 70", () => {
+  it("uses green color for score >= 74", () => {
     render(<ScoreGauge score={85} />);
-    const num = screen.getByText("85");
+    const num = screen.getByText("85.0");
     expect(num).toHaveStyle({ color: "#22c55e" });
   });
 
-  it("uses yellow color for score 50-69", () => {
-    render(<ScoreGauge score={55} />);
-    const num = screen.getByText("55");
+  it("uses yellow color for score 60-73", () => {
+    render(<ScoreGauge score={65} />);
+    const num = screen.getByText("65.0");
     expect(num).toHaveStyle({ color: "#eab308" });
   });
 
-  it("uses red color for score < 50", () => {
+  it("uses red color for score < 60", () => {
     render(<ScoreGauge score={30} />);
-    const num = screen.getByText("30");
+    const num = screen.getByText("30.0");
     expect(num).toHaveStyle({ color: "#ef4444" });
   });
 
@@ -47,8 +47,8 @@ describe("ScoreGauge", () => {
     expect(paths).toHaveLength(1);
   });
 
-  it("rounds decimal scores", () => {
+  it("renders decimal scores as-is", () => {
     render(<ScoreGauge score={82.7} />);
-    expect(screen.getByText("83")).toBeInTheDocument();
+    expect(screen.getByText("82.7")).toBeInTheDocument();
   });
 });

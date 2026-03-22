@@ -4,31 +4,32 @@ import {
   CATEGORY_WEIGHTS,
   scoreColor,
   scoreBgColor,
+  normalizeUrl,
 } from "@/lib/types";
 
 describe("scoreColor", () => {
-  it("returns green for 70+", () => {
-    expect(scoreColor(70)).toBe("text-green-500");
+  it("returns green for 74+", () => {
+    expect(scoreColor(74)).toBe("text-green-500");
     expect(scoreColor(100)).toBe("text-green-500");
   });
-  it("returns yellow for 50-69", () => {
-    expect(scoreColor(50)).toBe("text-yellow-500");
-    expect(scoreColor(69)).toBe("text-yellow-500");
+  it("returns yellow for 60-73", () => {
+    expect(scoreColor(60)).toBe("text-yellow-500");
+    expect(scoreColor(73)).toBe("text-yellow-500");
   });
-  it("returns red for below 50", () => {
-    expect(scoreColor(49)).toBe("text-red-500");
+  it("returns red for below 60", () => {
+    expect(scoreColor(59)).toBe("text-red-500");
     expect(scoreColor(0)).toBe("text-red-500");
   });
 });
 
 describe("scoreBgColor", () => {
-  it("returns green for 70+", () => {
-    expect(scoreBgColor(70)).toBe("bg-green-500");
+  it("returns green for 74+", () => {
+    expect(scoreBgColor(74)).toBe("bg-green-500");
   });
-  it("returns yellow for 50-69", () => {
-    expect(scoreBgColor(50)).toBe("bg-yellow-500");
+  it("returns yellow for 60-73", () => {
+    expect(scoreBgColor(60)).toBe("bg-yellow-500");
   });
-  it("returns red for below 50", () => {
+  it("returns red for below 60", () => {
     expect(scoreBgColor(0)).toBe("bg-red-500");
   });
 });
@@ -53,5 +54,27 @@ describe("CATEGORY_ORDER", () => {
   });
   it("ends with lowest weight", () => {
     expect(CATEGORY_ORDER[7]).toBe("emotionalRange");
+  });
+});
+
+describe("normalizeUrl", () => {
+  it("returns https URL unchanged", () => {
+    expect(normalizeUrl("https://example.com")).toBe("https://example.com");
+  });
+
+  it("returns http URL unchanged", () => {
+    expect(normalizeUrl("http://example.com")).toBe("http://example.com");
+  });
+
+  it("prepends https:// to bare domain", () => {
+    expect(normalizeUrl("example.com")).toBe("https://example.com");
+  });
+
+  it("prepends https:// to www domain", () => {
+    expect(normalizeUrl("www.example.com")).toBe("https://www.example.com");
+  });
+
+  it("returns empty string unchanged", () => {
+    expect(normalizeUrl("")).toBe("");
   });
 });
