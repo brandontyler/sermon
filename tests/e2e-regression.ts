@@ -53,14 +53,14 @@ await test("Home page loads", async () => {
   await shot(page, "01-home");
   const text = await getText(page);
   if (!text.includes("PSR")) throw new Error("Missing PSR heading");
-  if (!text.includes("Drop audio file")) throw new Error("Missing upload dropzone");
-  if (!text.includes("View All Sermons")) throw new Error("Missing sermons link");
-  return "PSR heading, dropzone, sermons link present";
+  if (!text.includes("Upload")) throw new Error("Missing Upload link");
+  if (!text.includes("Sermons")) throw new Error("Missing Sermons link");
+  return "PSR heading, Upload, Sermons links present";
 });
 
 // 2. Sermons list via client-side nav
 await test("Sermons list via client-side nav", async () => {
-  await page.click("text=View All Sermons");
+  await page.click("a:has-text('Sermons')");
   await page.waitForTimeout(5000);
   await shot(page, "02-list");
   const text = await getText(page);
@@ -238,7 +238,7 @@ await test("Upload page from list", async () => {
   await page.click("text=Upload →");
   await page.waitForTimeout(2000);
   const text = await getText(page);
-  if (!text.includes("Drop audio file")) throw new Error("Upload page not loaded");
+  if (!text.includes("Drop a file")) throw new Error("Upload page not loaded");
   return "Upload page loads";
 });
 
@@ -252,13 +252,14 @@ await test("Welcome intro text on home page", async () => {
   return "Welcome intro present";
 });
 
-// 18. Text upload dropzone on home page
-await test("Text upload dropzone on home page", async () => {
+// 18. Upload page has unified dropzone
+await test("Upload page dropzone", async () => {
+  await page.goto(`${BASE}/upload`);
+  await waitForPageLoad(page);
   const text = await getText(page);
-  if (!text.includes("Drop text transcript")) throw new Error("Missing text dropzone");
-  if (!text.includes("TXT, DOCX, MD, RTF")) throw new Error("Missing text format list");
-  if (!text.includes("or")) throw new Error("Missing 'or' separator between dropzones");
-  return "Audio + text dropzones present";
+  if (!text.includes("Drop a file")) throw new Error("Missing dropzone");
+  if (!text.includes("Audio")) throw new Error("Missing Audio format mention");
+  return "Upload dropzone present";
 });
 
 // 19. Source column on sermons list
