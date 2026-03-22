@@ -28,7 +28,7 @@ _mock_feedparser = types.ModuleType("feedparser")
 _mock_feedparser.parse = MagicMock()
 sys.modules.setdefault("feedparser", _mock_feedparser)
 
-from function_app import _preview_feeds, _poll_all_feeds, preview_feeds, poll_feeds_manual
+from routes.feeds import _preview_feeds, _poll_all_feeds, preview_feeds, poll_feeds_manual
 
 MOCK_STARTER_JSON = json.dumps({
     "taskHubName": "TestHub",
@@ -96,7 +96,8 @@ def _feed_patches(mock_cosmos, mock_feed_ctr, parsed=None, parse_side_effect=Non
     import feedparser
     patches = [
         patch.object(CosmosClient, "from_connection_string", return_value=mock_cosmos),
-        patch("function_app._feeds_container", return_value=mock_feed_ctr),
+        patch("helpers._feeds_container", return_value=mock_feed_ctr),
+        patch("routes.feeds._feeds_container", return_value=mock_feed_ctr),
     ]
     if parse_side_effect:
         patches.append(patch.object(feedparser, "parse", side_effect=parse_side_effect))
@@ -244,7 +245,7 @@ class TestPollManualEndpoint:
     async def test_passes_feed_ids(self):
         import azure.durable_functions as df
         with patch.object(df.DurableOrchestrationClient, "__init__", return_value=None), \
-             patch("function_app._poll_all_feeds", new_callable=AsyncMock, return_value=[{"feedId": "f1", "new": 0}]) as mock_poll:
+             patch("routes.feeds._poll_all_feeds", new_callable=AsyncMock, return_value=[{"feedId": "f1", "new": 0}]) as mock_poll:
             req = _admin_req("POST", body={"feedIds": ["f1"]})
             resp = await poll_feeds_manual(req, starter=MOCK_STARTER_JSON)
 
@@ -257,7 +258,7 @@ class TestPollManualEndpoint:
     async def test_no_body_polls_all(self):
         import azure.durable_functions as df
         with patch.object(df.DurableOrchestrationClient, "__init__", return_value=None), \
-             patch("function_app._poll_all_feeds", new_callable=AsyncMock, return_value=[]) as mock_poll:
+             patch("routes.feeds._poll_all_feeds", new_callable=AsyncMock, return_value=[]) as mock_poll:
             req = _admin_req("POST")
             resp = await poll_feeds_manual(req, starter=MOCK_STARTER_JSON)
 
@@ -280,7 +281,7 @@ class TestPollManualEndpoint:
 class TestListFeedsEnrichment:
     @pytest.mark.asyncio
     async def test_returns_episode_and_processing_counts(self):
-        from function_app import list_feeds
+        from routes.feeds import list_feeds
         from azure.cosmos import CosmosClient
 
         feed_item = {**_mock_feed(), "_rid": "x", "_self": "x", "_etag": "x", "_attachments": "x", "_ts": 1}
@@ -295,7 +296,7 @@ class TestListFeedsEnrichment:
         mock_cosmos = MagicMock()
         mock_cosmos.get_database_client.return_value.get_container_client.return_value = mock_sermon_ctr
 
-        with patch("function_app._feeds_container", return_value=mock_feed_ctr), \
+        with patch("routes.feeds._feeds_container", return_value=mock_feed_ctr), \
              patch.object(CosmosClient, "from_connection_string", return_value=mock_cosmos):
             resp = await list_feeds(_admin_req())
 
@@ -305,7 +306,7 @@ class TestListFeedsEnrichment:
 
     @pytest.mark.asyncio
     async def test_zero_processing_when_none(self):
-        from function_app import list_feeds
+        from routes.feeds import list_feeds
         from azure.cosmos import CosmosClient
 
         feed_item = {**_mock_feed(), "_rid": "x", "_self": "x", "_etag": "x", "_attachments": "x", "_ts": 1}
@@ -317,7 +318,7 @@ class TestListFeedsEnrichment:
         mock_cosmos = MagicMock()
         mock_cosmos.get_database_client.return_value.get_container_client.return_value = mock_sermon_ctr
 
-        with patch("function_app._feeds_container", return_value=mock_feed_ctr), \
+        with patch("routes.feeds._feeds_container", return_value=mock_feed_ctr), \
              patch.object(CosmosClient, "from_connection_string", return_value=mock_cosmos):
             resp = await list_feeds(_admin_req())
 
@@ -327,7 +328,7 @@ class TestListFeedsEnrichment:
 
     @pytest.mark.asyncio
     async def test_query_error_defaults_to_zero(self):
-        from function_app import list_feeds
+        from routes.feeds import list_feeds
         from azure.cosmos import CosmosClient
 
         feed_item = {**_mock_feed(), "_rid": "x", "_self": "x", "_etag": "x", "_attachments": "x", "_ts": 1}
@@ -339,7 +340,7 @@ class TestListFeedsEnrichment:
         mock_cosmos = MagicMock()
         mock_cosmos.get_database_client.return_value.get_container_client.return_value = mock_sermon_ctr
 
-        with patch("function_app._feeds_container", return_value=mock_feed_ctr), \
+        with patch("routes.feeds._feeds_container", return_value=mock_feed_ctr), \
              patch.object(CosmosClient, "from_connection_string", return_value=mock_cosmos):
             resp = await list_feeds(_admin_req())
 
