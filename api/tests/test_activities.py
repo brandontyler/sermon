@@ -1,4 +1,4 @@
-"""Tests for activities.py — all external services mocked."""
+"""Tests for activities — all external services mocked."""
 import json
 import os
 import sys
@@ -115,9 +115,9 @@ class TestAnalyzeAudio:
         mock_snd.to_pitch.return_value = mock_pitch
         mock_snd.to_intensity.return_value = mock_intensity
 
-        with patch("activities._blob_client", return_value=mock_blob), \
-             patch("activities.tempfile") as mock_tmp, \
-             patch("activities.os") as mock_os, \
+        with patch("activities.transcription._blob_client", return_value=mock_blob), \
+             patch("activities.transcription.tempfile") as mock_tmp, \
+             patch("activities.transcription.os") as mock_os, \
              patch("parselmouth.Sound", return_value=mock_snd):
             f = MagicMock()
             f.name = "/tmp/fake.mp3"
@@ -152,7 +152,7 @@ class TestAnalyzeAudio:
 # ── LLM Passes ──
 
 class TestPass1Biblical:
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_returns_3_categories(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "biblical_accuracy": {"score": 90, "reasoning": "Strong"},
@@ -166,7 +166,7 @@ class TestPass1Biblical:
 
 
 class TestPass2Structure:
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_returns_3_categories(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "clarity": {"score": 82, "reasoning": "Clear"},
@@ -179,7 +179,7 @@ class TestPass2Structure:
 
 
 class TestPass3Delivery:
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_returns_2_categories(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "delivery": {"score": 78, "reasoning": "Good"},
@@ -198,7 +198,7 @@ class TestPass3Delivery:
 # ── classify_sermon ──
 
 class TestClassifySermon:
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_basic(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "sermon_type": "expository", "confidence": 92,
@@ -213,7 +213,7 @@ class TestClassifySermon:
         assert result["confidence"] == 92
         assert result["title"] == "Called According"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_user_values_override(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "sermon_type": "topical", "confidence": 80,
@@ -227,7 +227,7 @@ class TestClassifySermon:
         assert result["title"] == "My Title"
         assert result["pastor"] == "My Pastor"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_defaults_on_missing_keys(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({})
         result = activities.classify_sermon({
@@ -238,7 +238,7 @@ class TestClassifySermon:
         assert result["confidence"] == 50
         assert result["title"] == "Untitled"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_short_transcript(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "sermon_type": "topical", "confidence": 60,
@@ -253,7 +253,7 @@ class TestClassifySermon:
 # ── classify_segments ──
 
 class TestClassifySegments:
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_basic(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({"types": ["scripture", "teaching", "application"]})
         segs = [{"start": i, "end": i + 10, "text": f"seg {i}"} for i in range(3)]
@@ -262,13 +262,13 @@ class TestClassifySegments:
         assert result[0]["type"] == "scripture"
         assert result[2]["type"] == "application"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_invalid_type_defaults(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({"types": ["invalid"]})
         result = activities.classify_segments({"segments": [{"start": 0, "end": 10, "text": "t"}]})
         assert result[0]["type"] == "teaching"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_short_response_padded(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({"types": ["scripture"]})
         segs = [{"start": i, "end": i + 1, "text": "t"} for i in range(3)]
@@ -277,7 +277,7 @@ class TestClassifySegments:
         assert result[1]["type"] == "teaching"
         assert result[2]["type"] == "teaching"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_batching_over_200(self, mock_fn):
         client = MagicMock()
         client.chat.completions.create.side_effect = [
@@ -292,13 +292,13 @@ class TestClassifySegments:
         assert result[0]["type"] == "scripture"
         assert result[200]["type"] == "application"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_empty_types(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({})
         result = activities.classify_segments({"segments": [{"start": 0, "end": 10, "text": "t"}]})
         assert result[0]["type"] == "teaching"
 
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_preserves_segment_fields(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({"types": ["prayer"]})
         result = activities.classify_segments({"segments": [{"start": 1.5, "end": 3.2, "text": "Lord"}]})
@@ -310,7 +310,7 @@ class TestClassifySegments:
 # ── generate_summary ──
 
 class TestGenerateSummary:
-    @patch("activities._openai_client")
+    @patch("activities.scoring._openai_client")
     def test_basic(self, mock_fn):
         mock_fn.return_value = _mock_openai_client({
             "summary": "Strong sermon.", "strengths": ["a", "b", "c"], "improvements": ["x", "y"],
@@ -325,7 +325,7 @@ class TestGenerateSummary:
 # ── update_sermon ──
 
 class TestUpdateSermon:
-    @patch("activities._cosmos_client")
+    @patch("activities.misc._cosmos_client")
     def test_basic(self, mock_fn):
         container = MagicMock()
         container.read_item.return_value = {"id": "s1", "status": "processing"}
@@ -342,20 +342,18 @@ class TestUpdateSermon:
 
 class TestSharedHelpers:
     def test_openai_client(self):
-        with patch("activities.AzureOpenAI") as mock_cls:
+        with patch("activities.helpers.AzureOpenAI") as mock_cls:
             activities._openai_client()
             mock_cls.assert_called_once()
             assert mock_cls.call_args[1]["api_key"] == "test-key"
 
     def test_cosmos_client(self):
-        with patch("activities.CosmosClient", create=True) as mock_cls:
-            # _cosmos_client does a lazy import, so we need to patch at the module level
-            from azure.cosmos import CosmosClient
-            with patch.object(CosmosClient, "from_connection_string") as mock_cs:
-                mock_db = MagicMock()
-                mock_cs.return_value.get_database_client.return_value = mock_db
-                activities._cosmos_client()
-                mock_cs.assert_called_once()
+        from azure.cosmos import CosmosClient
+        with patch.object(CosmosClient, "from_connection_string") as mock_cs:
+            mock_db = MagicMock()
+            mock_cs.return_value.get_database_client.return_value = mock_db
+            activities._cosmos_client()
+            mock_cs.assert_called_once()
 
     def test_blob_client(self):
         from azure.storage.blob import BlobClient
