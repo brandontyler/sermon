@@ -1,5 +1,5 @@
 .venv/
-__pycache__/
+**/__pycache__/
 .git/
 .github/
 poc/
@@ -10,3 +10,7 @@ docs/
 local.settings.json
 .kiro/
 .beads/
+tests/
+activities_old.py
+.coverage
+.pytest_cache/
