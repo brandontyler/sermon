@@ -152,11 +152,16 @@ try {
   const startTime = Date.now();
   let sermon: any = null;
   while (Date.now() - startTime < TIMEOUT_MS) {
-    const resp = await fetch(`${API}/api/sermons/${sermonId}`);
-    if (resp.ok) {
-      sermon = await resp.json();
-      if (sermon.status === "complete") break;
-      if (sermon.status === "failed") throw new Error(`Pipeline failed: ${sermon.error || "unknown"}`);
+    try {
+      const resp = await fetch(`${API}/api/sermons/${sermonId}`);
+      if (resp.ok) {
+        sermon = await resp.json();
+        if (sermon.status === "complete") break;
+        if (sermon.status === "failed") throw new Error(`Pipeline failed: ${sermon.error || "unknown"}`);
+      }
+    } catch (e) {
+      // Transient network error — keep polling
+      if (Date.now() - startTime > TIMEOUT_MS - POLL_INTERVAL) throw e;
     }
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     process.stdout.write(`\r⏳ Processing... ${elapsed}s`);
