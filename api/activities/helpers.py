@@ -1,11 +1,10 @@
 """Shared clients and utilities for activity functions."""
 
-import logging
 import os
 
 from openai import AzureOpenAI
 
-log = logging.getLogger(__name__)
+from log import log
 
 
 def _openai_client():

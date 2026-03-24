@@ -1,14 +1,12 @@
 """Admin endpoints (rescore)."""
 
-import logging
-
 import azure.functions as func
 import azure.durable_functions as df
 
+from log import log
 from helpers import _json_response, _require_admin
 
 bp = func.Blueprint()
-log = logging.getLogger(__name__)
 
 
 @bp.route(route="rescore", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)

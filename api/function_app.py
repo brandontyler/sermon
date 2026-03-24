@@ -2,6 +2,7 @@
 
 import azure.functions as func
 
+import log as _log  # noqa: F401 — init logging config early (silences Azure SDK noise)
 from routes import sermons, feeds, churches, admin
 import orchestrators
 

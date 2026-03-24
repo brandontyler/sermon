@@ -1,10 +1,10 @@
 """Durable Functions orchestrators + activity registrations."""
 
-import logging
 import time
 
 import azure.durable_functions as df
 
+from log import log
 from schema import (
     normalize_scores, compute_composite, fail_sermon_doc,
     PIPELINE_VERSION, SCORING_MODELS, PASS_HASHES,
@@ -18,7 +18,6 @@ from activities import (
 )
 
 bp = df.Blueprint()
-log = logging.getLogger(__name__)
 
 RETRY_LLM = df.RetryOptions(
     first_retry_interval_in_milliseconds=60_000,

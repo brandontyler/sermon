@@ -12,12 +12,13 @@
   },
   "logging": {
     "logLevel": {
-      "default": "Information",
-      "Host.Results": "Information",
+      "default": "Warning",
       "Function": "Information",
+      "Host.Results": "Information",
       "Host.Aggregator": "Information",
+      "Host.Triggers.Timer": "Information",
       "DurableTask.AzureStorage": "Warning",
-      "DurableTask.Core": "Information"
+      "DurableTask.Core": "Warning"
     },
     "applicationInsights": {
       "samplingSettings": {

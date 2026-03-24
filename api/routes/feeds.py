@@ -2,18 +2,17 @@
 
 import datetime
 import json
-import logging
 import os
 import uuid
 
 import azure.functions as func
 import azure.durable_functions as df
 
+from log import log
 from schema import new_sermon_doc, new_feed_doc
 from helpers import _json_response, _require_admin, _feeds_container
 
 bp = func.Blueprint()
-log = logging.getLogger(__name__)
 
 
 @bp.route(route="feeds", methods=["GET"])
@@ -248,12 +247,14 @@ async def _poll_all_feeds(starter: df.DurableOrchestrationClient, feed_ids=None)
         feed_ids_set = set(feed_ids)
         feeds = [f for f in feeds if f["id"] in feed_ids_set]
 
+    log.info(f"[poll_feeds] polling {len(feeds)} active feed(s)")
     results = []
     for feed_doc in feeds:
         feed_id = feed_doc["id"]
         try:
             parsed = feedparser.parse(feed_doc["feedUrl"])
             if not parsed.entries:
+                log.warning(f"[poll_feed] {feed_id}: no entries in feed")
                 results.append({"feedId": feed_id, "new": 0, "error": "No entries"})
                 continue
 
@@ -333,6 +334,7 @@ async def _poll_all_feeds(starter: df.DurableOrchestrationClient, feed_ids=None)
             if entries:
                 feed_doc["lastSeenGuid"] = entries[0].get("id") or entries[0].get("link", "")
             feed_container.upsert_item(feed_doc)
+            log.info(f"[poll_feed] {feed_id}: {new_count} new episode(s)")
             results.append({"feedId": feed_id, "new": new_count})
 
         except Exception as e:
@@ -344,4 +346,7 @@ async def _poll_all_feeds(starter: df.DurableOrchestrationClient, feed_ids=None)
                 pass
             results.append({"feedId": feed_id, "new": 0, "error": str(e)})
 
+    total_new = sum(r.get("new", 0) for r in results)
+    total_err = sum(1 for r in results if "error" in r)
+    log.info(f"[poll_feeds] done — {total_new} new episode(s), {total_err} error(s)")
     return results

@@ -1,12 +1,12 @@
 """Sermon CRUD + upload endpoints."""
 
-import logging
 import os
 import uuid
 
 import azure.functions as func
 import azure.durable_functions as df
 
+from log import log
 from schema import new_sermon_doc, fail_sermon_doc
 from helpers import (
     ALLOWED_TYPES, MAX_SIZE, ALLOWED_TEXT_TYPES, ALLOWED_TEXT_EXTENSIONS, MAX_TEXT_SIZE,
@@ -14,7 +14,6 @@ from helpers import (
 )
 
 bp = func.Blueprint()
-log = logging.getLogger(__name__)
 
 
 @bp.route(route="sermons", methods=["POST"])

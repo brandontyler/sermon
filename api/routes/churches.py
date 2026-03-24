@@ -1,14 +1,13 @@
 """Church CRUD endpoints."""
 
-import logging
 import os
 
 import azure.functions as func
 
+from log import log
 from helpers import _json_response, _require_admin
 
 bp = func.Blueprint()
-log = logging.getLogger(__name__)
 
 
 @bp.route(route="churches", methods=["GET"])

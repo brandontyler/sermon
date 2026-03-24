@@ -1,12 +1,10 @@
 """Miscellaneous activities: update_sermon, AI detection, content summary, RSS download."""
 
 import json
-import logging
 import os
 
 from activities.helpers import _openai_client, _cosmos_client
-
-log = logging.getLogger(__name__)
+from log import log
 
 
 def update_sermon(input_data):
