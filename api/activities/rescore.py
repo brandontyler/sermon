@@ -96,6 +96,7 @@ def rescore_sermon(input_data):
         categories = existing_cats
         norm_applied = doc.get("normalizationApplied", "none")
         composite = doc.get("compositePsr")
+        consistency_flags = doc.get("consistencyFlags", [])
 
     if "pass4" in run_passes:
         try:
@@ -105,6 +106,12 @@ def rescore_sermon(input_data):
             log.warning(f"[rescore] {sermon_id}: pass4 failed ({e}), keeping existing")
     else:
         enrichment = doc.get("enrichment")
+
+    # Apply consistency check now that enrichment is available
+    if scoring_changed:
+        from schema import consistency_check
+        categories, consistency_flags = consistency_check(categories, enrichment)
+        composite = compute_composite(categories)
 
     existing_segs = doc.get("transcript", {}).get("segments", [])
     if "segments" in run_passes:
@@ -169,6 +176,7 @@ def rescore_sermon(input_data):
             "rawScores": {k: raw_scores[k]["score"] for k in raw_scores},
             "strengths": summary.get("strengths"), "improvements": summary.get("improvements"),
             "summary": summary.get("summary"), "previousScores": previous,
+            "consistencyFlags": consistency_flags,
         })
     if "pass4" in run_passes:
         updates["enrichment"] = enrichment

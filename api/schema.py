@@ -9,7 +9,7 @@ Field names use camelCase to match the frontend-spec.md API contract.
 """
 
 # Pipeline version — bump when models or scoring prompts change
-PIPELINE_VERSION = "2026-03-11a"  # selective per-pass rescore with auto-hash staleness detection
+PIPELINE_VERSION = "2026-03-27c"  # DTS-3: post-scoring consistency check (enrichment cross-validation)
 SCORING_MODELS = {
     "pass1_biblical": "o4-mini",
     "pass2_structure": "gpt-5-mini",
@@ -147,6 +147,53 @@ def compute_composite(categories):
     if biblical_avg < 40:
         return round(min(raw, biblical_avg + 5), 1)
     return raw
+
+
+def consistency_check(categories, enrichment):
+    """Cross-validate scores against enrichment signals. Returns (adjusted_categories, flags).
+
+    Pure code, no LLM. Soft adjustments capped at +/-5 points.
+    """
+    if not enrichment:
+        return categories, []
+
+    flags = []
+    adjusted = {}
+    for k, v in categories.items():
+        adjusted[k] = dict(v)
+
+    bl_count = enrichment.get("biblicalLanguages", {}).get("count", 0)
+    ch_count = enrichment.get("churchHistory", {}).get("count", 0)
+    ill = enrichment.get("illustrations", {})
+    ill_total = ill.get("total", 0)
+    ill_types = ill.get("byType", {})
+    personal_count = len(ill_types.get("personalStory", []))
+
+    tw = categories.get("timeInTheWord", {}).get("score", 0)
+    eng = categories.get("engagement", {}).get("score", 0)
+    app = categories.get("application", {}).get("score", 0)
+
+    # Check 1: High TW but zero depth signals from enrichment
+    if tw >= 80 and bl_count == 0 and ch_count == 0:
+        adjusted["timeInTheWord"]["score"] = max(0, tw - 3)
+        flags.append("timeInTheWord -3: high score but no biblical language or church history refs in enrichment")
+
+    # Check 2: High Engagement but zero illustrations
+    if eng >= 80 and ill_total == 0:
+        adjusted["engagement"]["score"] = max(0, eng - 4)
+        flags.append("engagement -4: high score but no illustrations detected in enrichment")
+
+    # Check 3: Moderate TW with strong depth signals
+    if 50 <= tw < 80 and bl_count >= 3:
+        adjusted["timeInTheWord"]["score"] = min(100, tw + 3)
+        flags.append(f"timeInTheWord +3: moderate score but {bl_count} biblical language refs in enrichment")
+
+    # Check 4: High Application but no grounding illustrations
+    if app >= 80 and personal_count == 0 and ill_total <= 1:
+        adjusted["application"]["score"] = max(0, app - 3)
+        flags.append("application -3: high score but no personal stories or illustrations to ground application")
+
+    return adjusted, flags
 
 
 def normalize_scores(raw_scores, sermon_type, confidence, audio_available=True):

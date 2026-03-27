@@ -6,7 +6,7 @@ import azure.durable_functions as df
 
 from log import log
 from schema import (
-    normalize_scores, compute_composite, fail_sermon_doc,
+    normalize_scores, compute_composite, consistency_check, fail_sermon_doc,
     PIPELINE_VERSION, SCORING_MODELS, PASS_HASHES,
 )
 from helpers import _default_audio_metrics
@@ -137,11 +137,14 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
         confidence = classification["confidence"]
 
         categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
+        categories, consistency_flags = consistency_check(categories, enrichment)
         composite = compute_composite(categories)
         raw_score_map = {k: raw_scores[k]["score"] for k in raw_scores}
 
         if not context.is_replaying:
             log.info(f"[orchestrator] {sermon_id}: PSR={composite}, type={sermon_type} ({confidence}%)")
+            for flag in consistency_flags:
+                log.info(f"[orchestrator] {sermon_id}: consistency: {flag}")
 
         summary_result = yield context.call_activity_with_retry(
             "activity_generate_summary", RETRY_LIGHT,
@@ -167,6 +170,7 @@ def sermon_orchestrator(context: df.DurableOrchestrationContext):
             "audioMetrics": audio_metrics,
             "wpmFlag": wpm_flag,
             "enrichment": enrichment,
+            "consistencyFlags": consistency_flags,
             "aiScore": ai_score,
             "aiReasoning": ai_reasoning,
             "sermonSummary": content_summary,
@@ -280,11 +284,14 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
         confidence = classification["confidence"]
 
         categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence, audio_available=False)
+        categories, consistency_flags = consistency_check(categories, enrichment)
         composite = compute_composite(categories)
         raw_score_map = {k: raw_scores[k]["score"] for k in raw_scores}
 
         if not context.is_replaying:
             log.info(f"[text_orchestrator] {sermon_id}: PSR={composite}, type={sermon_type} ({confidence}%)")
+            for flag in consistency_flags:
+                log.info(f"[text_orchestrator] {sermon_id}: consistency: {flag}")
 
         summary_result = yield context.call_activity_with_retry(
             "activity_generate_summary", RETRY_LIGHT,
@@ -310,6 +317,7 @@ def text_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "inputType": "text",
             "wpmFlag": False,
             "enrichment": enrichment,
+            "consistencyFlags": consistency_flags,
             "aiScore": ai_score,
             "aiReasoning": ai_reasoning,
             "sermonSummary": content_summary,
@@ -426,6 +434,7 @@ def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
         sermon_type = classification["sermonType"]
         confidence = classification["confidence"]
         categories, norm_applied = normalize_scores(raw_scores, sermon_type, confidence)
+        categories, consistency_flags = consistency_check(categories, enrichment)
         composite = compute_composite(categories)
         raw_score_map = {k: raw_scores[k]["score"] for k in raw_scores}
 
@@ -452,6 +461,8 @@ def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "rawScores": raw_score_map,
             "audioMetrics": audio_metrics,
             "wpmFlag": wpm_flag,
+            "enrichment": enrichment,
+            "consistencyFlags": consistency_flags,
             "enrichment": enrichment,
             "aiScore": ai_score,
             "aiReasoning": ai_reasoning,

@@ -16,8 +16,28 @@ def pass1_biblical(input_data):
             messages=[{"role": "user", "content": f"""You are a biblical scholarship engine analyzing a sermon transcript. Return JSON with:
 
 - "biblical_accuracy": {{"score": 0-100, "scripture_refs_found": [list of "Book Chapter:Verse" references detected], "refs_used_in_context": count, "refs_out_of_context": count, "reasoning": "..."}}
-- "time_in_the_word": {{"score": 0-100, "biblical_content_pct": estimated %, "direct_quotation_pct": estimated %, "anecdote_pct": estimated %, "reasoning": "..."}}
-  IMPORTANT: "Time in the Word" measures BIBLICAL CONTENT DENSITY — not just direct quotation. Score based on how much is grounded in biblical truth (quoted, taught, applied, exposited) vs secular content. 90-100=nearly all biblical, 70-89=majority, 50-69=mix, 30-49=more illustration, 0-29=minimal.
+- "time_in_the_word": {{"score": 0-100, "density_score": 0-100, "depth_score": 0-100, "biblical_content_pct": estimated %, "direct_quotation_pct": estimated %, "anecdote_pct": estimated %, "reasoning": "..."}}
+  TIME IN THE WORD combines two sub-scores:
+
+  A) BIBLICAL CONTENT DENSITY (60% of final score): How much of the sermon is grounded in biblical truth vs secular content.
+     90-100=nearly all biblical, 70-89=majority, 50-69=mix, 30-49=more illustration, 0-29=minimal.
+
+  B) THEOLOGICAL DEPTH (40% of final score): How deeply does the preacher engage with the text beyond surface reading?
+     Depth signals (look for these specifically):
+     - Hebrew/Greek/Aramaic word studies or translation discussions
+     - Doctrinal reasoning — connecting the passage to systematic theology
+     - Canonical connections — how this passage relates to the broader biblical narrative
+     - Historical-grammatical context — what the text meant to the original audience
+     - Interaction with theological concepts (justification, sanctification, covenant, etc.)
+     Depth scoring:
+     85-100: Multiple depth signals — word studies, doctrinal connections, canonical reasoning
+     65-84: Some depth — at least one word study or doctrinal connection, shows awareness of theological context
+     45-64: Surface reading — quotes and paraphrases scripture accurately but does not go deeper
+     20-44: Shallow — references scripture but treats it as a springboard for stories/opinions
+     0-19: No theological engagement — scripture is decoration
+
+  FINAL SCORE = round(density_score * 0.6 + depth_score * 0.4)
+  Return density_score and depth_score separately so the formula is transparent.
 - "passage_focus": {{"score": 0-100, "main_passage": "...", "time_on_main_passage_pct": %, "tangent_count": int, "reasoning": "..."}}
 
 PASSAGE FOCUS — CONDITIONAL RUBRIC:
@@ -49,16 +69,17 @@ SCORING SCALE — use the FULL 0-100 range, not just 40-90:
 CALIBRATION EXAMPLES — FULL RANGE (do NOT cluster in 70-80):
   POOR (15-30):
   - Proof-texting Jeremiah 29:11 as a personal prosperity promise = Biblical Accuracy 15-25
-  - Sermon is mostly anecdotes, pop culture, and personal stories with a few verses sprinkled in = Time in the Word 10-25
+  - Sermon is mostly anecdotes, pop culture, and personal stories with a few verses sprinkled in = Time in the Word 10-25 (density ~20, depth ~10)
   - Announcing a passage then never teaching it = Passage Focus 5-15
   MID-RANGE (45-65) — most sermons should NOT score above this unless genuinely strong:
   - References 5-8 verses correctly but never goes deeper than surface reading = Biblical Accuracy 50-60
-  - About half the sermon is biblical content, half is stories/illustrations = Time in the Word 45-55
+  - About half the sermon is biblical content, half is stories/illustrations = Time in the Word 45-55 (density ~50, depth ~45)
   - Stays mostly on topic but makes 3-4 extended tangents = Passage Focus 50-60
   - Quotes scripture accurately but applies it generically without exegesis = Biblical Accuracy 55-65
   GOOD (70-85):
   - Solid exegesis of main passage with accurate cross-references = Biblical Accuracy 75-85
-  - Majority of sermon grounded in biblical exposition with purposeful illustrations = Time in the Word 70-80
+  - Majority of sermon grounded in biblical exposition with purposeful illustrations = Time in the Word 70-80 (density ~80, depth ~65)
+  - High biblical content but all surface-level (reads verses, makes basic claims, never explains) = Time in the Word ~61 (density ~85, depth ~25)
   EXCELLENT (85-95):
   - Deep verse-by-verse exposition with Greek/Hebrew word study = 85-95 across all three
 
@@ -104,18 +125,37 @@ def pass2_structure(input_data):
         messages=[
             {"role": "system", "content": """You are a sermon structure analyst. Evaluate against these rubrics and return JSON.
 
-CLARITY (10%): Logical flow, clear transitions, identifiable structure, accessible language.
-  KEY DISCRIMINATING QUESTIONS — answer these before scoring:
-  - Could a listener state the single main point of this sermon? If not, score below 60.
-  - Does each section clearly advance the argument, or do sections feel disconnected?
+CLARITY (10%): Thesis unity + structural execution. Measures TWO things:
+
+  STEP 1 — THESIS TEST (determines score ceiling):
+  State the single main idea of this sermon in one sentence. Return this as "thesis_statement".
+  - If you CAN state a clear, specific thesis → ceiling is 100
+  - If the thesis is vague or overly broad ("God is good", "we should have faith") → ceiling is 65
+  - If you CANNOT identify a unified main idea → ceiling is 50
+  This is the Haddon Robinson "Big Idea" test: a sermon should be a bullet, not buckshot.
+
+  STEP 2 — STRUCTURE (scored within the ceiling):
+  - Does each section clearly advance the thesis, or do sections feel disconnected?
   - Are transitions explicit (speaker signals movement) or implicit (listener figures it out)?
   - Is there a clear introduction-body-conclusion arc?
+  - Does the conclusion return to and reinforce the thesis?
 
-APPLICATION (10%): Practical takeaways, "so what?" moments, imperative language, specificity.
+APPLICATION (10%): Practical takeaways — the "Monday morning" test.
+  For EACH application moment, apply this test: "Could a listener describe a specific action they would take in the next 7 days based on this?"
+
+  THREE TIERS of application quality:
+  - ACTIONABLE (full credit): Names a specific behavior, situation, or change with enough detail to act on.
+    Examples: "This week, when you feel anxious, open to Philippians 4:6 and pray through it specifically."
+    "Before you go to bed tonight, text someone you have been avoiding and say I was wrong."
+  - DIRECTIONAL (70% credit): Points toward change but lacks specificity on HOW or WHEN.
+    Examples: "Meditate on this passage this week." "Spend more time in prayer." "Be more generous."
+  - EXHORTATION (30% credit): Inspires but gives no path to action. Theological truth without behavioral bridge.
+    Examples: "Find refuge in Romans 8:28." "Let your faith become strong." "Trust God with your future."
+
   KEY DISCRIMINATING QUESTIONS:
-  - Are applications SPECIFIC (name a concrete action, situation, or change) or VAGUE ("love more", "pray more", "trust God")?
   - Does the speaker connect biblical truth to the listener's actual Monday-through-Saturday life?
-  - Vague platitudes ("just trust God more") = Application 30-45, not 65-75.
+  - Are applications tied to SPECIFIC situations (conflict, anxiety, parenting, work) or generic?
+  - Does the speaker model what obedience looks like, or just command it?
 
 ENGAGEMENT (10%): Rhetorical variety, audience connection, illustration quality, content pacing.
   KEY DISCRIMINATING QUESTIONS:
@@ -134,19 +174,26 @@ SCORING SCALE — use the FULL 0-100 range, not just 70-85:
   85-95: Excellent — masterful flow, compelling and specific, deeply engaging
   95-100: Exceptional — historically significant sermon craft
 
-CALIBRATION EXAMPLES — MID-RANGE (most sermons land here):
-  Clarity 50-60: Clear 3-point structure but transitions are abrupt, listener has to infer connections between sections
-  Clarity 60-70: Identifiable structure with some explicit transitions, but the main point is buried or unclear
-  Application 40-55: Applications exist but are vague ("love more", "pray more") without specificity about HOW or WHEN
-  Application 55-70: Some specific applications mixed with generic ones; listener gets 1-2 concrete takeaways
-  Engagement 45-60: Good rhetorical questions but no tension/resolution arc, predictable pacing, generic illustrations
-  Engagement 60-70: Some effective moments but overall flat — no sustained narrative arc or compelling build
+CALIBRATION — CLARITY:
+  Clarity 40-50: No identifiable thesis — sermon covers multiple ideas without unifying them. Even if individual sections are clear, the whole lacks coherence.
+  Clarity 50-60: Vague thesis ("God loves you") with decent structure. Listener knows the topic but not the specific claim.
+  Clarity 60-70: Identifiable thesis but structure does not consistently serve it. Some sections feel like tangents from the main idea.
+  Clarity 75-85: Clear, specific thesis with structure that advances it. Each section builds on the previous. Explicit transitions.
+  Clarity 85-95: Thesis is memorable and specific. Every section is essential. Conclusion powerfully reinforces the opening idea.
 
-CALIBRATION EXAMPLES — EXTREMES:
-  Poor: "Just be positive" / "trust the process" as application = Application 10-20
-  Poor: No identifiable structure, speaker loses place, random tangents = Clarity 15-25
-  Poor: Being funny/relatable does NOT rescue a sermon with no structure or substance — Engagement 25-40
-  Excellent: Masterful rhetorical arc with specific, culturally relevant illustrations that serve the text = Engagement 85-95
+CALIBRATION — APPLICATION:
+  Application 0-24: No application at all — pure information transfer.
+  Application 25-39: One or two vague exhortations, no real "so what?"
+  Application 40-54: Mostly exhortation — inspiring but not equipping. "Trust God more." "Find refuge in His promises."
+  Application 55-69: Mostly directional — listener knows the direction but not the steps. "Spend more time in prayer this week."
+  Application 70-84: Mix of actionable and directional, at least 1-2 truly specific. "When you feel anxious this week, open to Phil 4:6."
+  Application 85-100: 3+ actionable applications tied to specific life situations with clear behavioral steps.
+
+CALIBRATION — ENGAGEMENT:
+  Engagement 45-60: Good rhetorical questions but no tension/resolution arc, predictable pacing, generic illustrations.
+  Engagement 60-70: Some effective moments but overall flat — no sustained narrative arc or compelling build.
+  Engagement 25-40: Being funny/relatable does NOT rescue a sermon with no structure or substance.
+  Engagement 85-95: Masterful rhetorical arc with specific, culturally relevant illustrations that serve the text.
 
 METHODOLOGY: First list specific observations from the transcript, THEN derive scores. Do not pick a score first."""},
             {"role": "user", "content": f"""Evaluate this sermon transcript:
@@ -154,8 +201,8 @@ METHODOLOGY: First list specific observations from the transcript, THEN derive s
 {transcript}
 
 Return JSON:
-- "clarity": {{"score": 0-100, "structure_points": [main points], "transition_quality": "strong/moderate/weak", "reasoning": "..."}}
-- "application": {{"score": 0-100, "actionable_takeaways": [list], "application_moments": count, "reasoning": "..."}}
+- "clarity": {{"score": 0-100, "thesis_statement": "one-sentence main idea of the sermon, or null if none identifiable", "structure_points": [main points], "transition_quality": "strong/moderate/weak", "reasoning": "..."}}
+- "application": {{"score": 0-100, "actionable_takeaways": [list with tier label], "application_moments": count, "reasoning": "..."}}
 - "engagement": {{"score": 0-100, "rhetorical_devices": [list], "audience_connection": "strong/moderate/weak", "reasoning": "..."}}"""},
         ],
     )
