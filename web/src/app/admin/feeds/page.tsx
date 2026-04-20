@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiUrl, adminFetch } from "@/lib/api";
+import AdminGate from "@/components/AdminGate";
+import Nav from "@/components/Nav";
 
 interface Feed {
   id: string;
@@ -18,6 +20,10 @@ interface Feed {
 }
 
 export default function FeedsPage() {
+  return <AdminGate><FeedsInner /></AdminGate>;
+}
+
+function FeedsInner() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
@@ -32,7 +38,7 @@ export default function FeedsPage() {
   useEffect(() => {
     adminFetch("/api/feeds")
       .then((r) => r.json())
-      .then((data) => { setFeeds(data); setLoading(false); })
+      .then((data) => { setFeeds(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -49,7 +55,7 @@ export default function FeedsPage() {
     const hasProcessing = feeds.some((f) => (f.processingCount ?? 0) > 0);
     if (!hasProcessing) return;
     const t = setInterval(() => {
-      adminFetch("/api/feeds").then((r) => r.json()).then(setFeeds).catch(() => {});
+      adminFetch("/api/feeds").then((r) => r.json()).then((d) => { if (Array.isArray(d)) setFeeds(d); }).catch(() => {});
     }, 30000);
     return () => clearInterval(t);
   }, [feeds]);
@@ -132,14 +138,10 @@ export default function FeedsPage() {
 
   return (
     <div className="max-w-[960px] mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <Nav />
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Admin — RSS Feeds</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/admin" className="text-blue-600 hover:underline">Bonus</Link>
-          <Link href="/admin/manage" className="text-blue-600 hover:underline">Manage</Link>
-          <Link href="/sermons" className="text-blue-600 hover:underline">← Sermons</Link>
-          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
-        </div>
+        <h1 className="text-base sm:text-lg font-semibold text-gray-900">RSS Feeds</h1>
+        <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-xs text-gray-400 hover:text-gray-600">Sign out</a>
       </div>
 
       {message && (
@@ -163,7 +165,7 @@ export default function FeedsPage() {
       {preview && (
         <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-4 text-sm">
           <p className="font-medium text-amber-800">
-            {preview.totalNew} new episode{preview.totalNew !== 1 ? "s" : ""} found (~${preview.estimatedCost.toFixed(2)})
+            {preview.totalNew} new episode{preview.totalNew !== 1 ? "s" : ""} found{preview.estimatedCost != null && ` (~$${preview.estimatedCost.toFixed(2)})`}
           </p>
           <ul className="mt-1 text-amber-700">
             {preview.feeds.filter((f) => f.newCount > 0).map((f) => (

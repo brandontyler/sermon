@@ -11,6 +11,5 @@ local.settings.json
 .kiro/
 .beads/
 tests/
-activities_old.py
 .coverage
 .pytest_cache/

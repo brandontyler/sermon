@@ -3,7 +3,8 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, tenantFetch } from "@/lib/api";
+import Nav from "@/components/Nav";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/types";
 
 interface SermonData {
@@ -221,12 +222,23 @@ function DashboardInner() {
   const [details, setDetails] = useState<Record<string, SermonData>>({});
   const [pastorFilter, setPastorFilter] = useState(searchParams.get("pastor") || "Mike Scheer");
   const [loading, setLoading] = useState(true);
+  const [churchBeliefs, setChurchBeliefs] = useState<string[]>([]);
+  const [churchInfo, setChurchInfo] = useState<{ name: string; beliefsUrl: string } | null>(null);
+  const [cbvResults, setCbvResults] = useState<Record<string, { title: string; referenced: boolean }[]>>({});
 
   useEffect(() => {
-    fetch(apiUrl("/api/sermons"))
+    tenantFetch(apiUrl("/api/sermons/dashboard"))
       .then((r) => r.json())
-      .then((data) => {
-        setSermons(data.filter((s: SermonData) => s.status === "complete"));
+      .then((data: SermonData[]) => {
+        setSermons(data);
+        const detailMap: Record<string, SermonData> = {};
+        const cbvMap: Record<string, { title: string; referenced: boolean }[]> = {};
+        data.forEach((s: SermonData & { cbv?: { results?: { title: string; referenced: boolean }[] } }) => {
+          detailMap[s.id] = s;
+          if (s.cbv?.results) cbvMap[s.id] = s.cbv.results;
+        });
+        setDetails(detailMap);
+        setCbvResults(cbvMap);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -235,19 +247,22 @@ function DashboardInner() {
   const pastors = [...new Set(sermons.map((s) => s.pastor).filter(Boolean))] as string[];
   const filtered = pastorFilter === "all" ? sermons : sermons.filter((s) => s.pastor === pastorFilter);
   const recent = [...filtered].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+  const last4 = [...filtered].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
 
-  // Load details for recent sermons + all filtered for heatmap
+  // Fetch church beliefs for the selected pastor
   useEffect(() => {
-    const toLoad = [...new Set([...recent, ...filtered])];
-    toLoad.forEach((s) => {
-      if (!details[s.id]) {
-        fetch(apiUrl(`/api/sermons/${s.id}`))
-          .then((r) => r.json())
-          .then((d) => setDetails((prev) => ({ ...prev, [s.id]: d })))
-          .catch(() => {});
+    if (pastorFilter === "all" || !pastorFilter) { setChurchBeliefs([]); setChurchInfo(null); return; }
+    fetch(apiUrl("/api/churches")).then(r => r.json()).then((churches: { name: string; beliefsUrl?: string; beliefs?: ({ title: string } | string)[]; pastors: { name: string }[] }[]) => {
+      const match = churches.find(c => c.pastors.some(p => p.name === pastorFilter));
+      if (match?.beliefs?.length) {
+        setChurchBeliefs(match.beliefs.map(b => typeof b === "string" ? b : b.title));
+        setChurchInfo(match.beliefsUrl ? { name: match.name, beliefsUrl: match.beliefsUrl } : null);
+      } else {
+        setChurchBeliefs([]);
+        setChurchInfo(null);
       }
-    });
-  }, [recent.map((s) => s.id).join(","), filtered.map((s) => s.id).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+    }).catch(() => { setChurchBeliefs([]); setChurchInfo(null); });
+  }, [pastorFilter]);
 
   // KPIs
   const avgPsr = filtered.length ? filtered.reduce((s, x) => s + psr(x), 0) / filtered.length : 0;
@@ -284,10 +299,11 @@ function DashboardInner() {
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-6">
+      <Nav />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">PSR Dashboard</h1>
+          <h1 className="text-lg font-bold text-gray-900">Dashboard</h1>
           <p className="text-xs text-gray-500">Pastor performance overview</p>
         </div>
         <div className="flex items-center gap-3">
@@ -300,7 +316,6 @@ function DashboardInner() {
             <option value="all">All Pastors</option>
             {pastors.sort().map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-          <Link href="/sermons" className="text-sm text-blue-600 hover:underline">Sermons →</Link>
         </div>
       </div>
 
@@ -356,7 +371,34 @@ function DashboardInner() {
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-            <p className="text-xs text-gray-400">Loading scripture data...</p>
+            <p className="text-xs text-gray-400">Scripture heatmap available on individual sermon pages</p>
+          </div>
+        );
+      })()}
+
+      {/* CBV Missing — Last 4 Sermons */}
+      {churchBeliefs.length > 0 && (() => {
+        const loadedCbvs = last4.filter(s => cbvResults[s.id]);
+        if (!loadedCbvs.length) return null;
+        return (
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+            <p className="text-xs font-bold text-gray-600 mb-3">Church Beliefs and Values (CBV) — Last 4 Sermons</p>
+            {churchInfo && (
+              <p className="text-xs text-blue-600 mb-3 -mt-1"><a href={churchInfo.beliefsUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">{churchInfo.name}</a></p>
+            )}
+            <ul className="space-y-1.5">
+              {churchBeliefs.map((title, i) => {
+                const referenced = loadedCbvs.some(s =>
+                  cbvResults[s.id]?.find(r => r.title === title)?.referenced
+                );
+                return (
+                  <li key={i} className="text-sm text-gray-600 flex items-center gap-2">
+                    <span className="shrink-0">{referenced ? "✅" : <span className="text-red-500">✕</span>}</span>
+                    <span>{title}</span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         );
       })()}

@@ -53,7 +53,7 @@ async def list_churches(req: func.HttpRequest) -> func.HttpResponse:
             p["sermonCount"] = stats["count"]
             p["avgScore"] = round(stats["total"] / stats["count"], 1) if stats["count"] else None
 
-    return _json_response(churches)
+    return _json_response(churches, headers={"Cache-Control": "public, max-age=300"})
 
 
 @bp.route(route="churches", methods=["POST"])
@@ -83,9 +83,34 @@ async def upsert_church(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         church_container = db.get_container_client("churches")
 
+    # Auto-scrape beliefs if beliefsUrl provided and beliefs not already in body
+    if body.get("beliefsUrl") and "beliefs" not in body:
+        try:
+            body["beliefs"] = _scrape_beliefs(body["beliefsUrl"])
+        except Exception as e:
+            log.warning(f"[upsert_church] beliefs scrape failed: {e}")
+
     church_container.upsert_item(body)
     log.info(f"[upsert_church] {body['id']}: {body['name']}")
     return _json_response(body)
+
+
+@bp.route(route="churches/{church_id}", methods=["GET"])
+@bp.function_name("get_church")
+async def get_church(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/churches/{id} — Get a single church (tenant config)."""
+    from azure.cosmos import CosmosClient, exceptions
+
+    church_id = req.route_params.get("church_id")
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    try:
+        doc = cosmos.get_database_client("psr").get_container_client("churches").read_item(church_id, partition_key=church_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Church not found"}, 404)
+
+    for key in ("_rid", "_self", "_etag", "_attachments", "_ts"):
+        doc.pop(key, None)
+    return _json_response(doc)
 
 
 @bp.route(route="churches/{church_id}", methods=["DELETE"])
@@ -108,3 +133,62 @@ async def delete_church(req: func.HttpRequest) -> func.HttpResponse:
 
     log.info(f"[delete_church] {church_id}")
     return _json_response({"deleted": church_id})
+
+
+def _scrape_beliefs(url: str) -> list[dict]:
+    """Fetch a beliefs/values page and use LLM to extract theological beliefs."""
+    import re
+    import requests
+    from html.parser import HTMLParser
+
+    resp = requests.get(url, timeout=15, headers={"User-Agent": "PSR/1.0"})
+    resp.raise_for_status()
+
+    # Strip HTML to plain text
+    text_parts: list[str] = []
+    skip = False
+
+    class TextExtractor(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            nonlocal skip
+            if tag in ("script", "style", "nav", "footer"):
+                skip = True
+
+        def handle_endtag(self, tag):
+            nonlocal skip
+            if tag in ("script", "style", "nav", "footer"):
+                skip = False
+
+        def handle_data(self, data):
+            if not skip:
+                text_parts.append(data)
+
+    TextExtractor().feed(resp.text)
+    page_text = re.sub(r'\s+', ' ', ' '.join(text_parts)).strip()
+    # Truncate to ~3000 words
+    page_text = ' '.join(page_text.split()[:3000])
+
+    from activities.helpers import _openai_client
+    client = _openai_client()
+
+    result = client.chat.completions.create(
+        model="gpt-5-nano",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": (
+                "Extract the church's theological beliefs from this webpage text. "
+                "Only include actual doctrinal statements — not navigation, headers, intros, "
+                "contact info, service times, taglines, or website boilerplate. "
+                "Each belief MUST have a short title AND a full description with the doctrinal content and scripture references. "
+                "Return JSON: {\"beliefs\": [{\"title\": \"...\", \"description\": \"full doctrinal statement text...\"}]}"
+            )},
+            {"role": "user", "content": page_text},
+        ],
+    )
+
+    import json
+    try:
+        data = json.loads(result.choices[0].message.content)
+        return data.get("beliefs", [])
+    except Exception:
+        return []

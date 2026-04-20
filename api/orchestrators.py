@@ -398,7 +398,7 @@ def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "wpm": wpm, "audioAvailable": audio_metrics is not None,
         })
         classify_task = context.call_activity_with_retry("activity_classify_sermon", RETRY_LLM, {
-            "transcript": transcript_text, "userTitle": input_data.get("userTitle"), "userPastor": None,
+            "transcript": transcript_text, "userTitle": input_data.get("userTitle"), "userPastor": input_data.get("userPastor"),
         })
         segment_task = context.call_activity_with_retry("activity_classify_segments", RETRY_LIGHT, {"segments": transcript_result["segments"]})
         pass4_task = context.call_activity_with_retry("activity_pass4_enrichment", RETRY_LLM, {"transcript": transcript_text})
@@ -444,6 +444,7 @@ def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
         )
 
         duration_seconds = round(transcript_result["durationMs"] / 1000)
+        church_id = input_data.get("churchId")
         updates = {
             "status": "complete",
             "title": classification["title"],
@@ -463,7 +464,6 @@ def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "wpmFlag": wpm_flag,
             "enrichment": enrichment,
             "consistencyFlags": consistency_flags,
-            "enrichment": enrichment,
             "aiScore": ai_score,
             "aiReasoning": ai_reasoning,
             "sermonSummary": content_summary,
@@ -472,6 +472,8 @@ def rss_sermon_orchestrator(context: df.DurableOrchestrationContext):
             "scoringModels": SCORING_MODELS,
             "passVersions": PASS_HASHES,
         }
+        if church_id:
+            updates["churchId"] = church_id
 
         yield context.call_activity_with_retry("activity_update_sermon", RETRY_LIGHT, {
             "sermonId": sermon_id, "updates": updates,

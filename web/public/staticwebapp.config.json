@@ -5,31 +5,6 @@
       "statusCode": 404
     },
     {
-      "route": "/api/feeds*",
-      "methods": ["GET", "POST", "PATCH", "DELETE"],
-      "allowedRoles": ["admin"]
-    },
-    {
-      "route": "/api/sermons/*",
-      "methods": ["DELETE", "PATCH"],
-      "allowedRoles": ["admin"]
-    },
-    {
-      "route": "/api/rescore",
-      "methods": ["POST"],
-      "allowedRoles": ["admin"]
-    },
-    {
-      "route": "/api/churches",
-      "methods": ["POST"],
-      "allowedRoles": ["admin"]
-    },
-    {
-      "route": "/api/churches/*",
-      "methods": ["DELETE"],
-      "allowedRoles": ["admin"]
-    },
-    {
       "route": "/api/*",
       "allowedRoles": ["anonymous"]
     },

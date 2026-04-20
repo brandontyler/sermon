@@ -33,12 +33,16 @@ ALLOWED_TEXT_EXTENSIONS = {".txt", ".md", ".html", ".htm", ".csv", ".rtf", ".xml
 MAX_TEXT_SIZE = 10 * 1024 * 1024  # 10MB
 
 
-def _json_response(body, status=200):
-    return func.HttpResponse(
+def _json_response(body, status=200, headers=None):
+    resp = func.HttpResponse(
         json.dumps(body, default=str),
         status_code=status,
         mimetype="application/json",
     )
+    if headers:
+        for k, v in headers.items():
+            resp.headers[k] = v
+    return resp
 
 
 def _require_admin(req):
@@ -50,7 +54,7 @@ def _require_admin(req):
     if principal:
         import base64
         try:
-            data = json.loads(base64.b64decode(principal))
+            data = json.loads(base64.b64decode(principal + "=="))
             if "admin" in data.get("userRoles", []):
                 return None
         except Exception:

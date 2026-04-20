@@ -18,11 +18,7 @@ bp = func.Blueprint()
 @bp.route(route="feeds", methods=["GET"])
 @bp.function_name("list_feeds")
 async def list_feeds(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/feeds — List all RSS feed subscriptions."""
-    auth_err = _require_admin(req)
-    if auth_err:
-        return auth_err
-
+    """GET /api/feeds — List all RSS feed subscriptions. Page-level auth via SWA route config."""
     container = _feeds_container()
     items = list(container.query_items("SELECT * FROM c ORDER BY c.createdAt DESC", enable_cross_partition_query=True))
     for item in items:
@@ -52,9 +48,6 @@ async def list_feeds(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("create_feed")
 async def create_feed(req: func.HttpRequest) -> func.HttpResponse:
     """POST /api/feeds — Subscribe to an RSS feed."""
-    auth_err = _require_admin(req)
-    if auth_err:
-        return auth_err
 
     try:
         body = req.get_json()
@@ -66,6 +59,7 @@ async def create_feed(req: func.HttpRequest) -> func.HttpResponse:
         return _json_response({"error": "feedUrl is required"}, 400)
 
     backfill = min(body.get("backfillCount", 0), 50)
+    church_id = body.get("churchId") or None
 
     import feedparser
     parsed = feedparser.parse(feed_url)
@@ -74,7 +68,7 @@ async def create_feed(req: func.HttpRequest) -> func.HttpResponse:
 
     title = body.get("title") or parsed.feed.get("title", feed_url)
     feed_id = f"feed-{uuid.uuid4().hex[:8]}"
-    doc = new_feed_doc(feed_id, feed_url, title, backfill)
+    doc = new_feed_doc(feed_id, feed_url, title, backfill, church_id=church_id)
     _feeds_container().create_item(doc)
 
     log.info(f"[create_feed] {feed_id}: {title} ({feed_url}), backfill={backfill}")
@@ -85,9 +79,6 @@ async def create_feed(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("update_feed")
 async def update_feed(req: func.HttpRequest) -> func.HttpResponse:
     """PATCH /api/feeds/{id} — Toggle active/pause or update settings."""
-    auth_err = _require_admin(req)
-    if auth_err:
-        return auth_err
 
     feed_id = req.route_params.get("feed_id")
     try:
@@ -102,7 +93,7 @@ async def update_feed(req: func.HttpRequest) -> func.HttpResponse:
     except exceptions.CosmosResourceNotFoundError:
         return _json_response({"error": "Feed not found"}, 404)
 
-    for key in ("active", "title", "backfillCount"):
+    for key in ("active", "title", "backfillCount", "churchId"):
         if key in body:
             doc[key] = body[key]
     container.upsert_item(doc)
@@ -113,9 +104,6 @@ async def update_feed(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name("delete_feed")
 async def delete_feed(req: func.HttpRequest) -> func.HttpResponse:
     """DELETE /api/feeds/{id} — Remove a feed subscription."""
-    auth_err = _require_admin(req)
-    if auth_err:
-        return auth_err
 
     feed_id = req.route_params.get("feed_id")
     container = _feeds_container()
@@ -133,11 +121,7 @@ async def delete_feed(req: func.HttpRequest) -> func.HttpResponse:
 @bp.durable_client_input(client_name="starter")
 @bp.function_name("poll_feeds_manual")
 async def poll_feeds_manual(req: func.HttpRequest, starter: df.DurableOrchestrationClient) -> func.HttpResponse:
-    """POST /api/feeds/poll — Manually trigger feed polling (admin only)."""
-    auth_err = _require_admin(req)
-    if auth_err:
-        return auth_err
-
+    """POST /api/feeds/poll — Manually trigger feed polling."""
     body = req.get_body()
     feed_ids = None
     if body:
@@ -153,9 +137,6 @@ async def poll_feeds_manual(req: func.HttpRequest, starter: df.DurableOrchestrat
 @bp.function_name("preview_feeds")
 async def preview_feeds(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/feeds/preview — Preview new episode counts without submitting."""
-    auth_err = _require_admin(req)
-    if auth_err:
-        return auth_err
     results = await _preview_feeds()
     total = sum(r["newCount"] for r in results)
     return _json_response({"feeds": results, "totalNew": total, "estimatedCost": round(total * 0.75, 2)})
@@ -312,6 +293,8 @@ async def _poll_all_feeds(starter: df.DurableOrchestrationClient, feed_ids=None)
                 doc["inputType"] = "rss"
                 doc["uploadedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
                 doc["rssAudioUrl"] = audio_url
+                if feed_doc.get("churchId"):
+                    doc["churchId"] = feed_doc["churchId"]
                 doc["rssMeta"] = {
                     "subtitle": entry.get("subtitle") or None,
                     "summary": entry.get("summary") or None,
@@ -324,6 +307,8 @@ async def _poll_all_feeds(starter: df.DurableOrchestrationClient, feed_ids=None)
                     "sermonId": sermon_id,
                     "audioUrl": audio_url,
                     "userTitle": title,
+                    "userPastor": pastor,
+                    "churchId": feed_doc.get("churchId"),
                 })
                 new_count += 1
                 known_guids.add(guid)

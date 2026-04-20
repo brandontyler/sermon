@@ -6,13 +6,18 @@ import Link from "next/link";
 import { apiUrl } from "@/lib/api";
 import {
   SermonDetail,
+  TranscriptSegment,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   scoreColor,
   scoreBgColor,
 } from "@/lib/types";
+import dynamic from "next/dynamic";
 import ScoreGauge from "@/components/ScoreGauge";
-import RadarView from "@/components/RadarView";
+const RadarView = dynamic(() => import("@/components/RadarView"), {
+  ssr: false,
+  loading: () => <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm">Loading chart...</div>,
+});
 import TranscriptViewer from "@/components/TranscriptViewer";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,7 +32,11 @@ export default function SermonDetailClient() {
   const [spanishText, setSpanishText] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fullTranscript, setFullTranscript] = useState<{ fullText: string; segments?: unknown[]; translations?: Record<string, string> } | null>(null);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [churchUrl, setChurchUrl] = useState<{ name: string; url: string } | null>(null);
+  const [churchBeliefs, setChurchBeliefs] = useState<string[] | null>(null);
+  const [cbv, setCbv] = useState<{ title: string; referenced: boolean }[] | null>(null);
 
   // Resolve ID from URL on mount (avoids useParams "placeholder" race).
   // UUID guard prevents bogus API calls when SWA routing serves this page
@@ -101,11 +110,21 @@ export default function SermonDetailClient() {
 
   useEffect(() => {
     if (!sermon?.pastor) return;
-    fetch(apiUrl("/api/churches")).then(r => r.json()).then((churches: { name: string; url?: string; pastors: { name: string }[] }[]) => {
+    fetch(apiUrl("/api/churches")).then(r => r.json()).then((churches: { name: string; url?: string; beliefs?: ({ title: string; description?: string } | string)[]; pastors: { name: string }[] }[]) => {
       const match = churches.find(c => c.pastors.some(p => p.name === sermon.pastor));
       if (match?.url) setChurchUrl({ name: match.name, url: /^https?:\/\//i.test(match.url) ? match.url : `https://${match.url}` });
+      if (match?.beliefs?.length) {
+        setChurchBeliefs(match.beliefs.map(b => typeof b === "string" ? b : b.title));
+      }
     }).catch(() => {});
   }, [sermon?.pastor]);
+
+  useEffect(() => {
+    if (!id || !sermon || sermon.status !== "complete") return;
+    fetch(apiUrl(`/api/sermons/${id}/cbv`)).then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.results) setCbv(data.results);
+    }).catch(() => {});
+  }, [id, sermon?.status]);
 
   if (loading) return <Shell>Loading...</Shell>;
   if (error) return <Shell>{error}</Shell>;
@@ -252,8 +271,47 @@ export default function SermonDetailClient() {
             </div>
           )}
 
-          {sermon.transcript && (sermon.transcript.segments.length > 0 || sermon.transcript.fullText) && (
+          {churchBeliefs && churchBeliefs.length > 0 && (
+            <div className="mt-10 bg-white border border-gray-200 rounded-lg p-5">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">⛪ Church Beliefs and Values (CBV)</h3>
+              <ul className="space-y-1.5">
+                {churchBeliefs.map((b, i) => {
+                  const match = cbv?.find(c => c.title === b);
+                  return (
+                    <li key={i} className="text-sm text-gray-600 flex items-center gap-2">
+                      <span className="shrink-0 w-5 text-center">
+                        {match ? (match.referenced ? "✅" : "—") : <span className="text-gray-300">·</span>}
+                      </span>
+                      <span>{b}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {!cbv && <p className="text-xs text-gray-400 mt-2">Analyzing beliefs alignment…</p>}
+            </div>
+          )}
+
+          {sermon.transcript && ((sermon.transcript.segments?.length ?? 0) > 0 || sermon.transcript.fullText || sermon.transcript.wordCount) && (
             <div className="mt-10">
+              {!fullTranscript ? (
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-gray-900">Transcript</h3>
+                  <button
+                    onClick={() => {
+                      if (loadingTranscript) return;
+                      setLoadingTranscript(true);
+                      fetch(apiUrl(`/api/sermons/${sermon.id}/transcript`))
+                        .then(r => r.json())
+                        .then(data => { setFullTranscript(data); setLoadingTranscript(false); })
+                        .catch(() => setLoadingTranscript(false));
+                    }}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    {loadingTranscript ? "Loading…" : `Show Transcript${sermon.transcript.wordCount ? ` (${sermon.transcript.wordCount.toLocaleString()} words)` : ""}`}
+                  </button>
+                </div>
+              ) : (
+                <>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <h3 className="text-sm font-medium text-gray-900">Transcript</h3>
@@ -265,7 +323,10 @@ export default function SermonDetailClient() {
                     <button
                       onClick={async () => {
                         setTranscriptLang("es");
-                        if (spanishText) return;
+                        if (spanishText || fullTranscript.translations?.es) {
+                          if (!spanishText && fullTranscript.translations?.es) setSpanishText(fullTranscript.translations.es);
+                          return;
+                        }
                         setTranslating(true);
                         try {
                           const r = await fetch(apiUrl(`/api/sermons/${sermon.id}/translate`), {
@@ -286,7 +347,7 @@ export default function SermonDetailClient() {
                   onClick={() => {
                     const text = transcriptLang === "es" && spanishText
                       ? spanishText
-                      : sermon.transcript!.fullText || sermon.transcript!.segments.map(s => s.text).join("\n");
+                      : fullTranscript.fullText || (fullTranscript.segments || []).map((s: unknown) => (s as { text: string }).text).join("\n");
                     const blob = new Blob([text], { type: "text/plain" });
                     const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
@@ -327,10 +388,12 @@ export default function SermonDetailClient() {
                 )
               ) : (
                 <TranscriptViewer
-                  segments={sermon.transcript.segments.length > 0
-                    ? sermon.transcript.segments
-                    : [{ start: 0, end: 0, text: sermon.transcript.fullText, type: "teaching" }]}
+                  segments={fullTranscript.segments && (fullTranscript.segments as unknown[]).length > 0
+                    ? fullTranscript.segments as unknown as TranscriptSegment[]
+                    : [{ start: 0, end: 0, text: fullTranscript.fullText || "", type: "teaching" as const }]}
                 />
+              )}
+                </>
               )}
             </div>
           )}

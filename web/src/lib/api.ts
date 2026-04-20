@@ -1,31 +1,22 @@
-/** API base URL — Function App direct (SWA Free tier doesn't support linked backends) */
+import { resolveTenant } from "./tenant";
+
+/** API base URL — empty in production (same-origin through SWA proxy) */
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-/** Cached client principal from SWA /.auth/me */
-let _principalCache: string | null = null;
-
-async function getClientPrincipal(): Promise<string | null> {
-  if (_principalCache) return _principalCache;
-  try {
-    const r = await fetch("/.auth/me");
-    if (!r.ok) return null;
-    const { clientPrincipal } = await r.json();
-    if (!clientPrincipal) return null;
-    _principalCache = btoa(JSON.stringify(clientPrincipal));
-    return _principalCache;
-  } catch {
-    return null;
-  }
+/** Fetch wrapper that adds x-tenant header when on a church subdomain. */
+export function tenantFetch(url: string, init?: RequestInit): Promise<Response> {
+  const tenant = resolveTenant();
+  if (!tenant) return fetch(url, init);
+  const headers = new Headers(init?.headers);
+  headers.set("x-tenant", tenant.id);
+  return fetch(url, { ...init, headers });
 }
 
-/** Fetch wrapper that forwards SWA auth to the Function App */
+/** Fetch wrapper for admin endpoints. SWA proxy injects x-ms-client-principal server-side. */
 export async function adminFetch(path: string, init?: RequestInit): Promise<Response> {
-  const principal = await getClientPrincipal();
-  const headers = new Headers(init?.headers);
-  if (principal) headers.set("x-ms-client-principal", principal);
-  return fetch(apiUrl(path), { ...init, headers });
+  return fetch(apiUrl(path), init);
 }

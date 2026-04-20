@@ -66,7 +66,7 @@ module keyvault 'modules/keyvault.bicep' = {
   }
 }
 
-// --- Static Web App ---
+// --- Static Web App (created first for hostname) ---
 module swa 'modules/staticwebapp.bicep' = {
   name: 'staticwebapp'
   params: { location: location, environment: environment }
@@ -83,6 +83,16 @@ module functions 'modules/functions.bicep' = {
     appInsightsInstrumentationKey: monitoring.outputs.appInsightsInstrumentationKey
     keyVaultUri: keyvault.outputs.uri
     swaDefaultHostname: swa.outputs.defaultHostname
+  }
+}
+
+// --- Link Function App as SWA backend (after both exist) ---
+module swaLinkedBackend 'modules/swa-linked-backend.bicep' = {
+  name: 'swa-linked-backend'
+  params: {
+    environment: environment
+    location: location
+    functionAppId: functions.outputs.id
   }
 }
 

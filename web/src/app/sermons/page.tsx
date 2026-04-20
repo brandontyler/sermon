@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Nav from "@/components/Nav";
 import { SermonSummary, scoreColor } from "@/lib/types";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, tenantFetch } from "@/lib/api";
 
 type SortKey = "compositePsr" | "date";
 
@@ -16,13 +17,14 @@ export default function SermonsPage() {
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [sortAsc, setSortAsc] = useState(false);
   const [typeFilter, setTypeFilter] = useState("all");
+  const [pastorFilter, setPastorFilter] = useState("all");
 
   useEffect(() => {
     let active = true;
     async function load(retries = 3) {
       for (let i = 0; i < retries; i++) {
         try {
-          const r = await fetch(apiUrl("/api/sermons"));
+          const r = await tenantFetch(apiUrl("/api/sermons"));
           if (!active) return;
           if (!r.ok) throw new Error(`Server error (${r.status})`);
           setSermons(await r.json());
@@ -43,8 +45,11 @@ export default function SermonsPage() {
     else { setSortBy(key); setSortAsc(false); }
   }
 
+  const pastors = [...new Set(sermons.map(s => s.pastor).filter(Boolean))].sort() as string[];
+
   const filtered = sermons.filter(
-    (s) => typeFilter === "all" || s.sermonType === typeFilter
+    (s) => (typeFilter === "all" || s.sermonType === typeFilter) &&
+           (pastorFilter === "all" || s.pastor === pastorFilter)
   );
 
   const sorted = [...filtered].sort((a, b) => {
@@ -71,14 +76,8 @@ export default function SermonsPage() {
 
   return (
     <div className="max-w-[960px] mx-auto p-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <Link href="/" className="text-sm text-blue-600 hover:underline">← Home</Link>
-        <Link href="/upload" className="text-sm text-blue-600 hover:underline">Upload →</Link>
-      </div>
-      <div className="flex gap-4 mb-4">
-        <Link href="/churches" className="text-sm text-blue-600 hover:underline">Find a Church</Link>
-        <Link href="/admin/manage" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">Admin</Link>
-        <Link href="/calculations" className="text-sm text-gray-400 hover:text-gray-600 hover:underline">Calculations</Link>
+      <Nav />
+      <div className="flex gap-3 mb-4">
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
@@ -89,6 +88,15 @@ export default function SermonsPage() {
           <option value="expository">Expository</option>
           <option value="topical">Topical</option>
           <option value="survey">Survey</option>
+        </select>
+        <select
+          value={pastorFilter}
+          onChange={(e) => setPastorFilter(e.target.value)}
+          aria-label="Filter by pastor"
+          className="text-sm border border-gray-200 rounded px-2 py-1 bg-white"
+        >
+          <option value="all">All Pastors</option>
+          {pastors.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
       </div>
 

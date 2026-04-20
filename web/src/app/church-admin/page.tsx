@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiUrl, adminFetch } from "@/lib/api";
 import { scoreColor, normalizeUrl } from "@/lib/types";
+import AdminGate from "@/components/AdminGate";
+import Nav from "@/components/Nav";
 
 interface Pastor { name: string; role?: string; primary?: boolean; sermonCount?: number; avgScore?: number | null; }
-interface Church { id: string; name: string; address: string; city: string; state: string; lat: number; lng: number; url?: string; pastors: Pastor[]; }
+interface Church { id: string; name: string; address: string; city: string; state: string; lat: number; lng: number; url?: string; beliefsUrl?: string; pastors: Pastor[]; }
 
 export default function ChurchAdminPage() {
+  return <AdminGate><ChurchAdminInner /></AdminGate>;
+}
+
+function ChurchAdminInner() {
   const [churches, setChurches] = useState<Church[]>([]);
   const [knownPastors, setKnownPastors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +28,7 @@ export default function ChurchAdminPage() {
       adminFetch("/api/churches").then(r => r.json()),
       adminFetch("/api/sermons").then(r => r.json()),
     ]).then(([c, s]) => {
-      setChurches(c);
+      setChurches(c.sort((a: Church, b: Church) => a.name.localeCompare(b.name)));
       const names = [...new Set(s.map((x: { pastor?: string }) => x.pastor).filter(Boolean))] as string[];
       setKnownPastors(names.sort());
       setLoading(false);
@@ -106,13 +112,10 @@ export default function ChurchAdminPage() {
 
   return (
     <div className="max-w-[960px] mx-auto p-4 py-8">
+      <Nav />
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-gray-900">Church Admin</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/churches" className="text-blue-600 hover:underline">Church Finder</Link>
-          <Link href="/sermons" className="text-blue-600 hover:underline">Sermons</Link>
-          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
-        </div>
+        <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-xs text-gray-400 hover:text-gray-600">Sign out</a>
       </div>
 
       <div className="mb-6">
@@ -212,6 +215,11 @@ function ChurchForm({ draft, saving, knownPastors, onUpdate, onUpdatePastor, onA
         <div className="col-span-2">
           <label className="text-xs text-gray-500">Website URL</label>
           <input value={draft.url || ""} onChange={e => onUpdate("url", e.target.value)}
+            placeholder="https://..." className="w-full text-sm border border-gray-200 rounded px-2 py-1" />
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs text-gray-500">Beliefs / Values URL</label>
+          <input value={draft.beliefsUrl || ""} onChange={e => onUpdate("beliefsUrl", e.target.value)}
             placeholder="https://..." className="w-full text-sm border border-gray-200 rounded px-2 py-1" />
         </div>
         <div>

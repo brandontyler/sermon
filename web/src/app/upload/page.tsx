@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiUrl } from "@/lib/api";
+import Nav from "@/components/Nav";
+import { apiUrl, tenantFetch } from "@/lib/api";
 
 const ALLOWED_AUDIO = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a"];
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".html", ".htm", ".rtf", ".xml", ".csv", ".docx", ".odt"];
@@ -60,7 +61,7 @@ export default function UploadPage() {
   const [inputValue, setInputValue] = useState("");
 
   useEffect(() => {
-    fetch(apiUrl("/api/sermons"))
+    tenantFetch(apiUrl("/api/sermons"))
       .then((r) => r.json())
       .then((data) => {
         const names = [...new Set(data.map((s: { pastor?: string }) => s.pastor).filter(Boolean))] as string[];
@@ -221,11 +222,9 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen p-4">
-      <div className="flex items-center justify-between mt-6 mb-6 max-w-[400px] mx-auto">
-        <div>
-          <h1 className="text-xl text-gray-900 font-semibold leading-tight">Upload Sermon</h1>
-        </div>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">← Home</Link>
+      <div className="max-w-[400px] mx-auto mt-6">
+        <Nav />
+        <h1 className="text-xl text-gray-900 font-semibold leading-tight mb-6">Upload Sermon</h1>
       </div>
       <div className="w-full max-w-[400px] mx-auto text-center">
 

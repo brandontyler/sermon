@@ -5,11 +5,24 @@
   --score-yellow: #eab308;
   --score-red: #ef4444;
   --accent: #2563eb;
+  --bg-gradient: linear-gradient(135deg, #0f172a, #1e1b4b, #0f172a);
+  --muted-accent: #a5b4fc;
+  --muted-accent-faint: rgba(165,180,252,0.7);
+  --card-border: rgba(255,255,255,0.2);
+  --orb1: rgba(168,85,247,0.2);
+  --orb2: rgba(59,130,246,0.2);
+  --orb3: rgba(16,185,129,0.15);
+  --shadow1: rgba(37,99,235,0.4);
+  --shadow1-hover: rgba(37,99,235,0.55);
+  --shadow2: rgba(16,185,129,0.4);
+  --shadow2-hover: rgba(16,185,129,0.55);
+  --shadow3: rgba(139,92,246,0.4);
+  --shadow3-hover: rgba(139,92,246,0.55);
 }
 
 body {
   font-family: "Inter", system-ui, -apple-system, sans-serif;
-  background: linear-gradient(135deg, #0f172a, #1e1b4b, #0f172a);
+  background: var(--bg-gradient);
   color: #e2e8f0;
   min-height: 100vh;
 }
@@ -82,3 +95,47 @@ th.hover\:text-gray-900:hover { color: #f1f5f9 !important; }
 .fill-gray-500 { fill: #64748b !important; }
 .fill-gray-600 { fill: #94a3b8 !important; }
 .fill-gray-700 { fill: #cbd5e1 !important; }
+
+/* ── Per-tenant theme overrides ── */
+
+/* Theme utility classes — default (main site) values */
+.theme-accent { color: #a5b4fc; }
+.theme-muted { color: rgba(165,180,252,0.7); }
+.theme-orb-1 { background: var(--orb1); }
+.theme-orb-2 { background: var(--orb2); }
+.theme-orb-3 { background: var(--orb3); }
+.theme-card { border-color: var(--card-border); }
+.theme-card-1 { box-shadow: 0 8px 32px var(--shadow1); }
+.theme-card-1:hover { box-shadow: 0 12px 40px var(--shadow1-hover); }
+.theme-card-2 { box-shadow: 0 8px 32px var(--shadow2); }
+.theme-card-2:hover { box-shadow: 0 12px 40px var(--shadow2-hover); }
+.theme-card-3 { box-shadow: 0 8px 32px var(--shadow3); }
+.theme-card-3:hover { box-shadow: 0 12px 40px var(--shadow3-hover); }
+
+/* Denton Bible overrides */
+[data-theme="denton-bible"] .theme-accent { color: var(--muted-accent); }
+[data-theme="denton-bible"] .theme-muted { color: var(--muted-accent-faint); }
+
+[data-theme="denton-bible"] .bg-blue-600 {
+  background-color: #317ff3 !important;
+}
+[data-theme="denton-bible"] .hover\:bg-blue-700:hover {
+  background-color: #2968d4 !important;
+}
+[data-theme="denton-bible"] .text-blue-600 {
+  color: #317ff3 !important;
+}
+[data-theme="denton-bible"] .text-blue-700 {
+  color: #5a9af5 !important;
+}
+[data-theme="denton-bible"] .hover\:text-blue-600:hover {
+  color: #5a9af5 !important;
+}
+[data-theme="denton-bible"] .bg-blue-100 {
+  background-color: rgba(49,127,243,0.2) !important;
+}
+[data-theme="denton-bible"] input:focus,
+[data-theme="denton-bible"] select:focus,
+[data-theme="denton-bible"] textarea:focus {
+  border-color: #317ff3 !important;
+}

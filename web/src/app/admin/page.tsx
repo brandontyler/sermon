@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiUrl, adminFetch } from "@/lib/api";
 import { scoreColor } from "@/lib/types";
+import Nav from "@/components/Nav";
+import AdminGate from "@/components/AdminGate";
 
 interface SermonItem {
   id: string;
@@ -88,7 +90,7 @@ function BonusRow({ row, onChange }: { row: RowData; onChange: (patch: Partial<R
 }
 
 export default function AdminPage() {
-  return <Suspense><AdminPageInner /></Suspense>;
+  return <AdminGate><Suspense><AdminPageInner /></Suspense></AdminGate>;
 }
 
 function AdminPageInner() {
@@ -233,14 +235,10 @@ function AdminPageInner() {
 
   return (
     <div className="max-w-[820px] mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <Nav />
       <div className="flex items-center justify-between mb-4 sm:mb-6">
-        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Admin — Bonus Points</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/admin/manage" className="text-blue-600 hover:underline">Manage</Link>
-          <Link href="/admin/feeds" className="text-blue-600 hover:underline">Feeds</Link>
-          <Link href="/sermons" className="text-blue-600 hover:underline">← Sermons</Link>
-          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
-        </div>
+        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Bonus Points</h1>
+        <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-xs text-gray-400 hover:text-gray-600">Sign out</a>
       </div>
 
       <select

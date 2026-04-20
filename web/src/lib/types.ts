@@ -46,8 +46,9 @@ export interface SermonDetail extends SermonSummary {
   strengths: string[] | null;
   improvements: string[] | null;
   transcript: {
-    fullText: string;
-    segments: TranscriptSegment[];
+    fullText?: string;
+    segments?: TranscriptSegment[];
+    wordCount?: number;
   } | null;
   error: string | null;
   failedAt: string | null;

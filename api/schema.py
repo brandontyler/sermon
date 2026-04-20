@@ -78,7 +78,7 @@ NORM_ADJUSTMENTS = {
 UNASSIGNED_CHURCH_ID = "church-unassigned"
 
 
-def new_feed_doc(feed_id, feed_url, title, backfill=0):
+def new_feed_doc(feed_id, feed_url, title, backfill=0, church_id=None):
     """Create initial Cosmos document for an RSS feed subscription."""
     import datetime
     return {
@@ -87,6 +87,7 @@ def new_feed_doc(feed_id, feed_url, title, backfill=0):
         "title": title,
         "active": True,
         "backfillCount": backfill,
+        "churchId": church_id,
         "lastPolledAt": None,
         "lastPollResult": None,
         "lastSeenGuid": None,

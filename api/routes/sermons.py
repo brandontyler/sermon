@@ -16,6 +16,88 @@ from helpers import (
 bp = func.Blueprint()
 
 
+@bp.route(route="sermons/{sermon_id}/cbv", methods=["GET"])
+@bp.function_name("get_cbv_score")
+async def get_cbv_score(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/sermons/{id}/cbv — Check which church beliefs are referenced in the sermon."""
+    from azure.cosmos import CosmosClient, exceptions
+
+    sermon_id = req.route_params.get("sermon_id")
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    db = cosmos.get_database_client("psr")
+
+    # Get sermon
+    try:
+        sermon = db.get_container_client("sermons").read_item(sermon_id, partition_key=sermon_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Sermon not found"}, 404)
+
+    # Return cached result if available
+    if sermon.get("cbv"):
+        return _json_response(sermon["cbv"], headers={"Cache-Control": "public, max-age=3600"})
+
+    transcript = (sermon.get("transcript") or {}).get("fullText", "")
+    if not transcript:
+        return _json_response({"error": "No transcript available"}, 400)
+
+    # Find matching church via pastor
+    pastor = sermon.get("pastor")
+    if not pastor:
+        return _json_response({"error": "No pastor linked"}, 400)
+
+    try:
+        churches = list(db.get_container_client("churches").query_items(
+            "SELECT * FROM c", enable_cross_partition_query=True
+        ))
+    except Exception:
+        churches = []
+
+    church = next((c for c in churches if any(p["name"] == pastor for p in c.get("pastors", []))), None)
+    if not church or not church.get("beliefs"):
+        return _json_response({"error": "No church beliefs found"}, 400)
+
+    beliefs = church["beliefs"]
+    # Build belief list for the prompt
+    belief_lines = "\n".join(f"- {b['title']}: {b.get('description', '')}" for b in beliefs if isinstance(b, dict))
+    if not belief_lines:
+        # Legacy format (list of strings)
+        belief_lines = "\n".join(f"- {b}" for b in beliefs if isinstance(b, str))
+
+    # Truncate transcript to ~4000 words to stay within token limits
+    words = transcript.split()
+    truncated = " ".join(words[:4000])
+
+    from activities.helpers import _openai_client
+    client = _openai_client()
+
+    resp = client.chat.completions.create(
+        model="gpt-5-nano",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "You check whether a sermon references specific church beliefs/values. "
+             "For each belief, determine if the sermon meaningfully touches on that theme — "
+             "it doesn't need to quote it verbatim, just clearly relate to the concept. "
+             "Return JSON: {\"results\": [{\"title\": \"...\", \"referenced\": true/false}]}"},
+            {"role": "user", "content": f"Church beliefs:\n{belief_lines}\n\nSermon transcript:\n{truncated}"},
+        ],
+    )
+
+    import json
+    try:
+        cbv = json.loads(resp.choices[0].message.content)
+    except Exception:
+        return _json_response({"error": "AI response parse error"}, 500)
+
+    # Cache on sermon doc
+    try:
+        sermon["cbv"] = cbv
+        db.get_container_client("sermons").upsert_item(sermon)
+    except Exception:
+        pass  # non-fatal
+
+    return _json_response(cbv, headers={"Cache-Control": "public, max-age=3600"})
+
+
 @bp.route(route="sermons", methods=["POST"])
 @bp.durable_client_input(client_name="starter")
 @bp.function_name("upload_sermon")
@@ -341,25 +423,53 @@ async def upload_youtube_sermon(req: func.HttpRequest, starter: df.DurableOrches
 @bp.route(route="sermons", methods=["GET"])
 @bp.function_name("list_sermons")
 async def list_sermons(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/sermons — Feed list."""
+    """GET /api/sermons — Feed list. x-tenant header filters by churchId."""
     from azure.cosmos import CosmosClient
 
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
     container = cosmos.get_database_client("psr").get_container_client("sermons")
 
-    query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr, c.inputType, c.bonus, c.totalScore FROM c ORDER BY c.date DESC"
-    items = list(container.query_items(query, enable_cross_partition_query=True))
+    tenant = req.headers.get("x-tenant")
+    if tenant:
+        query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr, c.inputType, c.bonus, c.totalScore FROM c WHERE c.churchId = @churchId ORDER BY c.date DESC"
+        items = list(container.query_items(query, parameters=[{"name": "@churchId", "value": tenant}], enable_cross_partition_query=True))
+    else:
+        query = "SELECT c.id, c.title, c.pastor, c.date, c.duration, c.status, c.sermonType, c.compositePsr, c.inputType, c.bonus, c.totalScore FROM c ORDER BY c.date DESC"
+        items = list(container.query_items(query, enable_cross_partition_query=True))
 
-    return _json_response(items)
+    return _json_response(items, headers={"Cache-Control": "public, max-age=30"})
+
+
+@bp.route(route="sermons/dashboard", methods=["GET"])
+@bp.function_name("dashboard_sermons")
+async def dashboard_sermons(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/sermons/dashboard — Aggregated data for dashboard (single call replaces N+1)."""
+    from azure.cosmos import CosmosClient
+
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    tenant = req.headers.get("x-tenant")
+    # Select only fields the dashboard needs — excludes transcript (70KB per sermon)
+    fields = "c.id, c.title, c.pastor, c.date, c.compositePsr, c.totalScore, c.status, c.sermonType, c.categories, c.strengths, c.improvements, c.enrichment, c.cbv, c.inputType"
+    if tenant:
+        query = f"SELECT {fields} FROM c WHERE c.status = 'complete' AND c.churchId = @churchId ORDER BY c.date DESC"
+        items = list(container.query_items(query, parameters=[{"name": "@churchId", "value": tenant}], enable_cross_partition_query=True))
+    else:
+        query = f"SELECT {fields} FROM c WHERE c.status = 'complete' ORDER BY c.date DESC"
+        items = list(container.query_items(query, enable_cross_partition_query=True))
+
+    return _json_response(items, headers={"Cache-Control": "public, max-age=30"})
 
 
 @bp.route(route="sermons/{sermon_id}", methods=["GET"])
 @bp.function_name("get_sermon")
 async def get_sermon(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/sermons/{id} — Full sermon detail."""
+    """GET /api/sermons/{id} — Sermon detail. Excludes transcript by default for performance."""
     from azure.cosmos import CosmosClient, exceptions
 
     sermon_id = req.route_params.get("sermon_id")
+    include_transcript = req.params.get("include") == "transcript"
     cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
     container = cosmos.get_database_client("psr").get_container_client("sermons")
 
@@ -371,7 +481,41 @@ async def get_sermon(req: func.HttpRequest) -> func.HttpResponse:
     for key in ("_rid", "_self", "_etag", "_attachments", "_ts", "uploaderIp", "uploadedAt"):
         doc.pop(key, None)
 
-    return _json_response(doc)
+    if not include_transcript:
+        transcript = doc.get("transcript")
+        if transcript:
+            doc["transcript"] = {
+                "wordCount": len((transcript.get("fullText") or "").split()),
+            }
+        doc.pop("translations", None)
+
+    cache = {"Cache-Control": "public, max-age=300"} if doc.get("status") == "complete" else {}
+    return _json_response(doc, headers=cache)
+
+
+@bp.route(route="sermons/{sermon_id}/transcript", methods=["GET"])
+@bp.function_name("get_sermon_transcript")
+async def get_sermon_transcript(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/sermons/{id}/transcript — Full transcript text (lazy loaded by frontend)."""
+    from azure.cosmos import CosmosClient, exceptions
+
+    sermon_id = req.route_params.get("sermon_id")
+    cosmos = CosmosClient.from_connection_string(os.environ["COSMOS_CONNECTION_STRING"])
+    container = cosmos.get_database_client("psr").get_container_client("sermons")
+
+    try:
+        doc = container.read_item(sermon_id, partition_key=sermon_id)
+    except exceptions.CosmosResourceNotFoundError:
+        return _json_response({"error": "Sermon not found"}, 404)
+
+    transcript = doc.get("transcript", {})
+    translations = doc.get("translations", {})
+
+    return _json_response({
+        "fullText": transcript.get("fullText", ""),
+        "segments": transcript.get("segments"),
+        "translations": translations,
+    }, headers={"Cache-Control": "public, max-age=3600"})
 
 
 @bp.route(route="sermons/{sermon_id}/translate", methods=["POST"])
@@ -539,7 +683,7 @@ async def edit_sermon(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         return _json_response({"error": "Invalid JSON"}, 400)
 
-    EDITABLE = {"title", "pastor", "date", "sermonType"}
+    EDITABLE = {"title", "pastor", "date", "sermonType", "churchId"}
     updates = {k: v for k, v in body.items() if k in EDITABLE and v is not None}
     if not updates:
         return _json_response({"error": "No valid fields to update"}, 400)

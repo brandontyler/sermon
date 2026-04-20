@@ -34,6 +34,7 @@ resource func 'Microsoft.Web/sites@2023-12-01' = {
         allowedOrigins: [
           'https://${swaDefaultHostname}'
           'https://howwas.church'
+          'https://dentonbible.howwas.church'
         ]
       }
       appSettings: [
@@ -66,3 +67,37 @@ output id string = func.id
 output name string = func.name
 output principalId string = func.identity.principalId
 output defaultHostname string = func.properties.defaultHostName
+
+// EasyAuth — SWA linked backend sets this up automatically, but we declare it
+// so Bicep redeploys don't reset it. AllowAnonymous lets admin-key auth through
+// while EasyAuth still strips forged x-ms-client-principal headers.
+resource authSettings 'Microsoft.Web/sites/config@2023-12-01' = {
+  parent: func
+  name: 'authsettingsV2'
+  properties: {
+    globalValidation: {
+      requireAuthentication: true
+      unauthenticatedClientAction: 'AllowAnonymous'
+    }
+    httpSettings: {
+      forwardProxy: { convention: 'NoProxy' }
+      requireHttps: true
+      routes: { apiPrefix: '/.auth' }
+    }
+    identityProviders: {
+      azureStaticWebApps: {
+        enabled: true
+        registration: {
+          clientId: swaDefaultHostname
+        }
+      }
+    }
+    login: {
+      tokenStore: { enabled: false }
+    }
+    platform: {
+      enabled: true
+      runtimeVersion: '~1'
+    }
+  }
+}

@@ -4,8 +4,14 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiUrl, adminFetch } from "@/lib/api";
 import { SermonSummary, scoreColor } from "@/lib/types";
+import AdminGate from "@/components/AdminGate";
+import Nav from "@/components/Nav";
 
 export default function AdminManagePage() {
+  return <AdminGate><AdminManageInner /></AdminGate>;
+}
+
+function AdminManageInner() {
   const [sermons, setSermons] = useState<SermonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
@@ -66,14 +72,10 @@ export default function AdminManagePage() {
 
   return (
     <div className="max-w-[960px] mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      <Nav />
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Admin — Manage Sermons</h1>
-        <div className="flex gap-3 text-sm">
-          <Link href="/admin" className="text-blue-600 hover:underline">Bonus</Link>
-          <Link href="/admin/feeds" className="text-blue-600 hover:underline">Feeds</Link>
-          <Link href="/sermons" className="text-blue-600 hover:underline">← Sermons</Link>
-          <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-gray-400 hover:text-gray-600 hover:underline">Sign out</a>
-        </div>
+        <h1 className="text-base sm:text-lg font-semibold text-gray-900">Manage Sermons</h1>
+        <a href="/.auth/logout?post_logout_redirect_uri=/" className="text-xs text-gray-400 hover:text-gray-600">Sign out</a>
       </div>
 
       {message && (

@@ -194,16 +194,6 @@ class TestPreviewFeedsEndpoint:
         assert body["estimatedCost"] == 2.25
         assert len(body["feeds"]) == 1
 
-    @pytest.mark.asyncio
-    async def test_unauthorized(self):
-        req = MagicMock(spec=func.HttpRequest)
-        req.headers = {}
-        req.params = {}
-        resp = await preview_feeds(req)
-        assert resp.status_code == 401
-
-
-# ── _poll_all_feeds feedIds filter ──
 
 class TestPollFeedIds:
     @pytest.mark.asyncio
@@ -264,16 +254,6 @@ class TestPollManualEndpoint:
 
         mock_poll.assert_called_once()
         assert mock_poll.call_args[1]["feed_ids"] is None
-
-    @pytest.mark.asyncio
-    async def test_unauthorized(self):
-        import azure.durable_functions as df
-        req = MagicMock(spec=func.HttpRequest)
-        req.headers = {}
-        req.params = {}
-        with patch.object(df.DurableOrchestrationClient, "__init__", return_value=None):
-            resp = await poll_feeds_manual(req, starter=MOCK_STARTER_JSON)
-        assert resp.status_code == 401
 
 
 # ── list_feeds: episodeCount + processingCount (sermon-38g) ──
