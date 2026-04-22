@@ -31,11 +31,9 @@ resource func 'Microsoft.Web/sites@2023-12-01' = {
       linuxFxVersion: 'Python|3.12'
       ftpsState: 'Disabled'
       cors: {
-        allowedOrigins: [
-          'https://${swaDefaultHostname}'
-          'https://howwas.church'
-          'https://dentonbible.howwas.church'
-        ]
+        // Wildcard lets the platform handle OPTIONS preflight for any origin.
+        // Python code validates the actual Origin header for *.howwas.church on responses.
+        allowedOrigins: ['*']
       }
       appSettings: [
         // Runtime needs these at cold start — direct values, not Key Vault refs

@@ -9,6 +9,7 @@ param openaiModelVersions = {
   gpt41nano: '2025-04-14'
   gpt5mini: '2025-08-07'
   gpt5nano: '2025-08-07'
+  gpt54: '2026-03-05'
 }
 
 // Secure params — actual values passed via CLI overrides in deploy.sh (from .env)

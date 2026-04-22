@@ -1,5 +1,6 @@
 import Link from "next/link";
-import ChurchLogo from "@/components/ChurchLogo";
+import TenantMenu from "@/components/TenantMenu";
+import ActionButtons from "@/components/ActionButtons";
 
 export default function HomePage() {
   return (
@@ -12,8 +13,8 @@ export default function HomePage() {
       </div>
 
       <div className="relative z-10 max-w-[900px] mx-auto px-6 py-16 flex flex-col items-center min-h-screen justify-center">
-        {/* Church logo (subdomain only) */}
-        <ChurchLogo />
+        {/* Tenant menu (subdomain only) */}
+        <TenantMenu />
 
         {/* Logo / Title */}
         <div className="text-center mb-10">
@@ -31,35 +32,17 @@ export default function HomePage() {
         </div>
 
         {/* Mission statement */}
-        <div className="max-w-[680px] mb-16">
+        <div className="max-w-[680px] mb-8">
           <p className="text-lg leading-relaxed text-center theme-muted">
             Welcome to a new way of strengthening your voice in ministry. Our platform provides pastors and speakers with thoughtful, data&#8209;driven insights by analyzing uploaded sermon audio and comparing it against a carefully trained communication model. The goal isn&apos;t to critique or diminish—it&apos;s to illuminate strengths, highlight opportunities for growth, and support every pastor in delivering clearer, more impactful messages. With a warm, encouraging approach, we help communicators refine their craft so their words can reach hearts with even greater clarity and purpose.
           </p>
         </div>
 
-        {/* Big action buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-[720px]">
-          <Link href="/upload" className="theme-card theme-card-1 group relative rounded-2xl p-8 text-center transition-all duration-300 hover:scale-105 hover:-translate-y-1 bg-white/10 backdrop-blur-md border">
-            <div className="text-4xl mb-4">🎙️</div>
-            <h2 className="text-xl font-bold mb-2">Upload</h2>
-            <p className="text-sm theme-muted">Audio, text, or YouTube — get your sermon scored</p>
-          </Link>
-
-          <Link href="/sermons" className="theme-card theme-card-2 group relative rounded-2xl p-8 text-center transition-all duration-300 hover:scale-105 hover:-translate-y-1 bg-white/10 backdrop-blur-md border">
-            <div className="text-4xl mb-4">📊</div>
-            <h2 className="text-xl font-bold mb-2">Sermons</h2>
-            <p className="text-sm theme-muted">Browse scores, trends, and detailed breakdowns</p>
-          </Link>
-
-          <Link href="/churches" className="theme-card theme-card-3 group relative rounded-2xl p-8 text-center transition-all duration-300 hover:scale-105 hover:-translate-y-1 bg-white/10 backdrop-blur-md border">
-            <div className="text-4xl mb-4">⛪</div>
-            <h2 className="text-xl font-bold mb-2">Find a Church</h2>
-            <p className="text-sm theme-muted">Discover churches and their pastors</p>
-          </Link>
-        </div>
+        {/* Big action buttons (main site only) */}
+        <ActionButtons />
 
         {/* Design Principles */}
-        <div className="mt-20 max-w-[720px] w-full">
+        <div className="mt-8 max-w-[720px] w-full">
           <h2 className="text-center text-sm font-semibold tracking-widest uppercase mb-8 theme-accent">Our Principles</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-xl border border-white/10 bg-white/5 p-5">

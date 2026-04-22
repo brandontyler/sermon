@@ -3,7 +3,7 @@
 import azure.functions as func
 
 import log as _log  # noqa: F401 — init logging config early (silences Azure SDK noise)
-from routes import sermons, feeds, churches, admin
+from routes import sermons, feeds, churches, admin, users
 import orchestrators
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -13,6 +13,7 @@ app.register_functions(sermons.bp)
 app.register_functions(feeds.bp)
 app.register_functions(churches.bp)
 app.register_functions(admin.bp)
+app.register_functions(users.bp)
 
 # Register Durable Functions (orchestrators + activities)
 app.register_functions(orchestrators.bp)

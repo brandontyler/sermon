@@ -33,7 +33,27 @@ ALLOWED_TEXT_EXTENSIONS = {".txt", ".md", ".html", ".htm", ".csv", ".rtf", ".xml
 MAX_TEXT_SIZE = 10 * 1024 * 1024  # 10MB
 
 
-def _json_response(body, status=200, headers=None):
+_ALLOWED_ORIGIN_SUFFIXES = (".howwas.church",)
+_ALLOWED_ORIGINS_EXACT = frozenset()  # add exact origins here if needed
+
+
+def _cors_origin(req) -> str | None:
+    """Return the request Origin if it matches *.howwas.church or localhost."""
+    origin = req.headers.get("Origin") if req else None
+    if not origin:
+        return None
+    # Strip protocol for suffix check
+    host = origin.split("://", 1)[-1].rstrip("/")
+    if any(host == s.lstrip(".") or host.endswith(s) for s in _ALLOWED_ORIGIN_SUFFIXES):
+        return origin
+    if host.startswith("localhost"):
+        return origin
+    if origin in _ALLOWED_ORIGINS_EXACT:
+        return origin
+    return None
+
+
+def _json_response(body, status=200, headers=None, req=None):
     resp = func.HttpResponse(
         json.dumps(body, default=str),
         status_code=status,
@@ -42,6 +62,10 @@ def _json_response(body, status=200, headers=None):
     if headers:
         for k, v in headers.items():
             resp.headers[k] = v
+    # Dynamic CORS for *.howwas.church subdomains
+    origin = _cors_origin(req) if req else None
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
     return resp
 
 

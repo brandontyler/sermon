@@ -7,7 +7,7 @@ Bead: `sermon-rih`
 
 ### 1. `_require_admin` accepts forged `x-ms-client-principal` (CONFIRMED EXPLOITABLE)
 
-The Function App is directly accessible at `psr-functions-dev.azurewebsites.net` (not proxied through SWA). Anyone can forge an `x-ms-client-principal` header with `{"userRoles":["authenticated"]}` and call admin endpoints — DELETE sermons, trigger rescores, manage feeds, etc.
+The Function App has EasyAuth enabled with `AllowAnonymous`. Public API endpoints (sermons, churches, feeds) work without auth. Admin endpoints are protected by SWA route rules requiring the `admin` role. Direct calls to `psr-functions-dev.azurewebsites.net` return 200 for public endpoints but admin operations require going through the SWA proxy with proper auth.
 
 **Confirmed:** A forged principal successfully deleted a sermon during testing (Born to Crave, re-ingested via feed poll).
 

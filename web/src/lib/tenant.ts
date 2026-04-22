@@ -8,6 +8,7 @@ export interface Tenant {
 /** Map of subdomain → tenant id. */
 const SUBDOMAIN_MAP: Record<string, string> = {
   dentonbible: "denton-bible",
+  demo: "denton-bible",
 };
 
 /**

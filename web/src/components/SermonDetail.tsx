@@ -22,12 +22,80 @@ import TranscriptViewer from "@/components/TranscriptViewer";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default function SermonDetailClient() {
+function CbvTooltip() {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-block mb-3">
+      <button
+        onClick={() => setShow(!show)}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        className="text-sm font-medium text-gray-900 cursor-pointer"
+      >
+        ⛪ Church Beliefs and Values (CBV)
+      </button>
+      {show && (
+        <span style={{ backgroundColor: "#ffffff", color: "#1a1a1a" }} className="absolute left-0 top-full mt-2 w-72 p-3 border border-gray-300 rounded-lg shadow-xl text-xs z-50">
+          <strong className="block mb-1">Church Beliefs &amp; Values</strong>
+          CBV is pulled from the church&apos;s official beliefs page (set by an admin). Each sermon transcript is analyzed by AI to determine which core beliefs were referenced. A ✅ means the belief was addressed in the sermon; a — means it wasn&apos;t. This helps pastors track doctrinal coverage over time.
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ScoreTooltip({ score }: { score: number }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative">
+      <span
+        onClick={() => setShow(!show)}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        className="cursor-pointer"
+      >
+        <ScoreGauge score={score} />
+      </span>
+      {show && (
+        <span style={{ backgroundColor: "#ffffff", color: "#1a1a1a" }} className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 p-3 border border-gray-300 rounded-lg shadow-xl text-xs z-50">
+          <strong className="block mb-1">PSR Score (0–100)</strong>
+          The Pastor Sermon Rating is a composite score across 8 weighted categories: Biblical Accuracy (25%), Time in the Word (20%), Passage Focus (10%), Clarity (10%), Engagement (10%), Application (10%), Delivery (10%), and Emotional Range (5%). Scores are normalized by sermon type when confidence is high. Green = 70+, Yellow = 50–69, Red = below 50.
+        </span>
+      )}
+    </span>
+  );
+}
+
+function BonusTooltip() {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative">
+      <button
+        onClick={() => setShow(!show)}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded cursor-pointer"
+      >
+        ⚙ Bonus
+      </button>
+      {show && (
+        <span style={{ backgroundColor: "#ffffff", color: "#1a1a1a" }} className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 border border-gray-300 rounded-lg shadow-xl text-xs z-50">
+          <strong className="block mb-1">Score Adjustment</strong>
+          Admins can manually adjust the composite score with bonus points — rewarding exceptional elements the AI may have missed, or correcting edge cases.
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bonus-sample.png" alt="Bonus points example" className="mt-2 rounded border border-gray-100 w-full" />
+        </span>
+      )}
+    </span>
+  );
+}
+
+export default function SermonDetailClient({ sermonId, sample, preloadedData }: { sermonId?: string; sample?: boolean; preloadedData?: SermonDetail } = {}) {
   const params = useParams<{ id: string }>();
   // Static export bakes "placeholder" into RSC payload. Always read from URL.
-  const [id, setId] = useState<string | null>(null);
-  const [sermon, setSermon] = useState<SermonDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [id, setId] = useState<string | null>(sermonId || null);
+  const [sermon, setSermon] = useState<SermonDetail | null>(preloadedData || null);
+  const [loading, setLoading] = useState(!preloadedData);
   const [transcriptLang, setTranscriptLang] = useState<"en" | "es">("en");
   const [spanishText, setSpanishText] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
@@ -42,14 +110,15 @@ export default function SermonDetailClient() {
   // UUID guard prevents bogus API calls when SWA routing serves this page
   // for non-detail paths (e.g. /sermons → seg="sermons").
   useEffect(() => {
+    if (sermonId) { setId(sermonId); return; }
     const seg = window.location.pathname.split("/").pop() || "";
-    const resolved = UUID_RE.test(seg) ? seg : UUID_RE.test(params.id) ? params.id : null;
+    const resolved = UUID_RE.test(seg) ? seg : (params.id && UUID_RE.test(params.id)) ? params.id : null;
     setId(resolved);
     if (!resolved) { setLoading(false); }
-  }, [params.id]);
+  }, [params.id, sermonId]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || preloadedData) return;
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;
     let pollAttempts = 0;
@@ -132,18 +201,22 @@ export default function SermonDetailClient() {
 
   return (
     <div className="max-w-[720px] mx-auto p-4 py-8">
-      <Link href="/sermons" className="text-sm text-blue-600 hover:underline">← Back to sermons</Link>
+      {!sample && <Link href="/sermons" className="text-sm text-blue-600 hover:underline">← Back to sermons</Link>}
 
       <div className="flex items-center gap-3 mt-4">
         <h1 className="text-2xl font-bold text-gray-900">{sermon.title}</h1>
-        <Link href={`/admin?sermon=${sermon.id}`} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded transition-colors">⚙ Bonus</Link>
+        {sample ? (
+          <BonusTooltip />
+        ) : (
+          <Link href={`/admin?sermon=${sermon.id}`} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded transition-colors">⚙ Bonus</Link>
+        )}
       </div>
       <p className="text-sm text-gray-500 mt-1">
         {sermon.pastor && (
-          <><Link href={`/dashboard?pastor=${encodeURIComponent(sermon.pastor)}`} className="hover:text-blue-600 hover:underline">{sermon.pastor}</Link> · </>
+          <>{sample ? <span>{sermon.pastor}</span> : <Link href={`/dashboard?pastor=${encodeURIComponent(sermon.pastor)}`} className="hover:text-blue-600 hover:underline">{sermon.pastor}</Link>} · </>
         )}
         {churchUrl && (
-          <><a href={churchUrl.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{churchUrl.name}</a> · </>
+          <>{sample ? <span className="text-gray-700">{churchUrl.name}</span> : <a href={churchUrl.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{churchUrl.name}</a>} · </>
         )}
         {[
           sermon.date && new Date(sermon.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
@@ -181,7 +254,7 @@ export default function SermonDetailClient() {
           {sermon.error && <p className="text-sm text-gray-500 mb-6">Error: {sermon.error}</p>}
           <div className="flex gap-4 justify-center">
             <Link href="/upload" className="text-sm text-blue-600 hover:underline">Try Again</Link>
-            <Link href="/sermons" className="text-sm text-gray-500 hover:underline">Back to sermons</Link>
+            {!sample && <Link href="/sermons" className="text-sm text-gray-500 hover:underline">Back to sermons</Link>}
           </div>
         </div>
       )}
@@ -189,7 +262,11 @@ export default function SermonDetailClient() {
       {sermon.status === "complete" && sermon.categories && (
         <>
           <div className="mt-8 flex flex-col items-center">
-            <ScoreGauge score={sermon.compositePsr ?? 0} />
+            {sample ? (
+              <ScoreTooltip score={sermon.compositePsr ?? 0} />
+            ) : (
+              <ScoreGauge score={sermon.compositePsr ?? 0} />
+            )}
             {sermon.bonus != null && sermon.bonus !== 0 && (
               <div className="flex items-center gap-2 mt-2 text-sm">
                 <span className="text-gray-500">PSR {sermon.compositePsr?.toFixed(1)}</span>
@@ -273,7 +350,11 @@ export default function SermonDetailClient() {
 
           {churchBeliefs && churchBeliefs.length > 0 && (
             <div className="mt-10 bg-white border border-gray-200 rounded-lg p-5">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">⛪ Church Beliefs and Values (CBV)</h3>
+              {sample ? (
+                <CbvTooltip />
+              ) : (
+                <h3 className="text-sm font-medium text-gray-900 mb-3">⛪ Church Beliefs and Values (CBV)</h3>
+              )}
               <ul className="space-y-1.5">
                 {churchBeliefs.map((b, i) => {
                   const match = cbv?.find(c => c.title === b);
@@ -315,6 +396,9 @@ export default function SermonDetailClient() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <h3 className="text-sm font-medium text-gray-900">Transcript</h3>
+                  {sample ? (
+                    <span className="text-xs text-gray-500 italic">Spanish translation available.</span>
+                  ) : (
                   <div className="flex rounded-md border border-gray-200 text-xs overflow-hidden">
                     <button
                       onClick={() => setTranscriptLang("en")}
@@ -342,6 +426,7 @@ export default function SermonDetailClient() {
                       className={`px-3 py-1 ${transcriptLang === "es" ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
                     >Español</button>
                   </div>
+                  )}
                 </div>
                 <button
                   onClick={() => {

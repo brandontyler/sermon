@@ -4,16 +4,16 @@
 - Admin pages (`/admin`, `/admin/manage`, `/admin/feeds`) protected by shared admin key in text input
 - Backend endpoints check `x-admin-key` header against `ADMIN_KEY` env var
 - No real user identity, no session, no login/logout flow
-- SWA plan: **Free tier**
+- SWA plan: **Standard tier**
 
 ## Decision: SWA Built-in Auth with Microsoft Entra ID
 
-Using the pre-configured Entra ID (AAD) provider on the SWA Free tier. This lets anyone with a Microsoft account (Outlook, Hotmail, Live, work M365) log in — no GitHub account needed.
+Using the pre-configured Entra ID (AAD) provider on SWA Standard tier. This lets anyone with a Microsoft account (Outlook, Hotmail, Live, work M365) log in — no GitHub account needed.
 
 ### Why Entra ID over GitHub
 - Orlando may not have a GitHub account
 - Everyone has a Microsoft account (or can create one free)
-- Pre-configured on SWA Free tier — zero setup, zero cost
+- Pre-configured on SWA Standard tier — zero setup
 - Block GitHub provider to keep it simple (one login button)
 
 ### How SWA Built-in Auth Works
@@ -65,7 +65,7 @@ az staticwebapp users invite \
   --invitation-expiration-in-hours 168
 ```
 
-Each person clicks the generated link, signs in with their Microsoft account, and the `admin` role is permanently assigned. Up to 25 invitation slots on Free tier (plenty).
+Each person clicks the generated link, signs in with their Microsoft account, and the `admin` role is permanently assigned.
 
 Can also be done in Azure Portal: SWA → Settings → Role Management → Invite.
 
@@ -114,9 +114,9 @@ Can also be done in Azure Portal: SWA → Settings → Role Management → Invit
 - `POST /api/sermons` (upload) stays anonymous — anyone can upload
 
 ### Edge Cases
-- **SWA linked backend**: `x-ms-client-principal` only injected when requests go through SWA domain. Direct calls to `psr-functions-dev.azurewebsites.net` bypass this — admin key covers that.
+- **SWA linked backend**: `x-ms-client-principal` is injected when requests go through SWA proxy (any custom domain). EasyAuth is set to AllowAnonymous so public API endpoints work without auth. Admin routes are protected by SWA route rules in `staticwebapp.config.json`.
 - **Route protection is server-side**: SWA reverse proxy enforces it before our code runs. Client-side routing alone isn't enough (which is why we also check in the backend).
 - **Session duration**: SWA manages session cookies. Default is ~8 hours. User just re-authenticates when it expires.
 
 ### Cost
-$0 — included in SWA Free tier.
+Included in SWA Standard tier.

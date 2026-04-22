@@ -451,7 +451,7 @@ async def dashboard_sermons(req: func.HttpRequest) -> func.HttpResponse:
 
     tenant = req.headers.get("x-tenant")
     # Select only fields the dashboard needs — excludes transcript (70KB per sermon)
-    fields = "c.id, c.title, c.pastor, c.date, c.compositePsr, c.totalScore, c.status, c.sermonType, c.categories, c.strengths, c.improvements, c.enrichment, c.cbv, c.inputType"
+    fields = "c.id, c.title, c.pastor, c.date, c.duration, c.compositePsr, c.totalScore, c.status, c.sermonType, c.categories, c.strengths, c.improvements, c.enrichment, c.cbv, c.inputType"
     if tenant:
         query = f"SELECT {fields} FROM c WHERE c.status = 'complete' AND c.churchId = @churchId ORDER BY c.date DESC"
         items = list(container.query_items(query, parameters=[{"name": "@churchId", "value": tenant}], enable_cross_partition_query=True))

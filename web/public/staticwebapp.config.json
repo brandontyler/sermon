@@ -6,7 +6,7 @@
     },
     {
       "route": "/api/*",
-      "allowedRoles": ["anonymous"]
+      "allowedRoles": ["anonymous", "authenticated"]
     },
     {
       "route": "/_next/static/*",

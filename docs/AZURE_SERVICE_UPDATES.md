@@ -32,7 +32,7 @@ No first-party Azure replacement for video transcoding. We registered `Microsoft
 
 ## Static Web Apps Dedicated Plan — Retired
 
-The paid "Dedicated" plan was retired. Free tier still works and is what we use for MVP. No impact.
+The paid "Dedicated" plan was retired. We use Standard tier for linked backend and custom domain support. No impact.
 
 ## Worth Evaluating (Phase 1)
 

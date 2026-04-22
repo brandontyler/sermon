@@ -297,7 +297,7 @@ User uploads video/audio file directly
 
 | Service | Estimated Monthly |
 |---------|------------------|
-| Static Web Apps | Free tier |
+| Static Web Apps | Standard tier |
 | Azure Functions | ~$5 (consumption) |
 | Cosmos DB | ~$25 (autoscale, low RU) |
 | Blob Storage | ~$5-20 (depending on uploads) |
@@ -365,7 +365,7 @@ Once both cloud stacks are deployed and processing sermons, run a structured com
 **Cost**
 - Monthly run cost at idle / low usage (MVP scale)
 - Cost per sermon processed
-- Free tier coverage — what's actually free vs what bleeds over
+- Standard tier coverage — linked backend, custom domains, custom auth
 
 **Developer Experience**
 - Local dev/debug story

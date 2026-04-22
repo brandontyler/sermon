@@ -159,6 +159,21 @@ deploy_infra() {
       --backend-region "$LOCATION" \
       -o none 2>/dev/null || true
     echo "    ✓ Backend linked"
+
+    # Re-apply EasyAuth config after link (link resets to RedirectToLoginPage)
+    echo "[·] Applying EasyAuth config..."
+    az rest --method put \
+      --url "https://management.azure.com${FUNC_ID}/config/authsettingsV2?api-version=2023-12-01" \
+      --body '{
+        "properties": {
+          "platform": {"enabled": true, "runtimeVersion": "~1"},
+          "globalValidation": {"requireAuthentication": true, "unauthenticatedClientAction": "AllowAnonymous"},
+          "identityProviders": {"azureStaticWebApps": {"enabled": true}},
+          "httpSettings": {"requireHttps": true, "routes": {"apiPrefix": "/.auth"}, "forwardProxy": {"convention": "NoProxy"}},
+          "login": {"tokenStore": {"enabled": false}}
+        }
+      }' -o none
+    echo "    ✓ EasyAuth: AllowAnonymous (survives link)"
   fi
 }
 
@@ -202,12 +217,9 @@ deploy_frontend() {
     exit 1
   fi
 
-  # Set API URL so the frontend knows where to send requests
-  # SWA Free tier doesn't support linked backends — frontend calls Function App directly
-  echo "[·] Resolving Function App URL..."
-  FUNC_URL="https://$(az functionapp show -n "$FUNC_NAME" -g "$RG" --query defaultHostName -o tsv)"
-  echo "    ✓ ${FUNC_URL}"
-  export NEXT_PUBLIC_API_URL="$FUNC_URL"
+  # SWA Standard tier with linked backend — frontend uses relative /api/* paths
+  # through the SWA proxy. No NEXT_PUBLIC_API_URL needed.
+  export NEXT_PUBLIC_API_URL=""
 
   echo "[·] Building frontend..."
   (cd "${PROJECT_DIR}/web" && npm install --silent && npm run build 2>&1 | tail -3)

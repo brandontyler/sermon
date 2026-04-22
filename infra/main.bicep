@@ -39,6 +39,12 @@ module speech 'modules/speech.bicep' = {
   params: { location: location, environment: environment }
 }
 
+// --- Translator ---
+module translator 'modules/translator.bicep' = {
+  name: 'translator'
+  params: { location: location, environment: environment }
+}
+
 // --- Azure OpenAI + model deployments ---
 module openai 'modules/openai.bicep' = {
   name: 'openai'

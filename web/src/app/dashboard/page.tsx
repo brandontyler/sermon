@@ -5,6 +5,9 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiUrl, tenantFetch } from "@/lib/api";
 import Nav from "@/components/Nav";
+import TenantMenu from "@/components/TenantMenu";
+import SampleNav from "@/components/SampleNav";
+import { resolveTenant } from "@/lib/tenant";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/types";
 
 interface SermonData {
@@ -14,6 +17,7 @@ interface SermonData {
   compositePsr: number | null;
   totalScore?: number;
   date: string;
+  duration?: number;
   status: string;
   categories?: Record<string, { score: number; weight: number; reasoning: string }>;
   improvements?: string[];
@@ -26,8 +30,9 @@ function color(score: number) { return score >= 74 ? "#22c55e" : score >= 60 ? "
 
 // ── Simple SVG Charts ──
 
-function BarChart({ data, label }: { data: { name: string; value: number; id?: string }[]; label: string }) {
+function BarChart({ data, label, colorFn }: { data: { name: string; value: number; id?: string }[]; label: string; colorFn?: (v: number) => string }) {
   const max = Math.max(...data.map((d) => d.value), 1);
+  const cfn = colorFn || color;
   const h = 130, w = 400, barW = Math.min(40, (w - 40) / data.length - 8);
   const startX = (w - data.length * (barW + 8)) / 2;
   return (
@@ -42,7 +47,7 @@ function BarChart({ data, label }: { data: { name: string; value: number; id?: s
           );
           return (
             <g key={i}>
-              <rect x={x} y={h - barH} width={barW} height={barH} fill={color(d.value)} rx={3} />
+              <rect x={x} y={h - barH} width={barW} height={barH} fill={cfn(d.value)} rx={3} />
               <text x={x + barW / 2} y={h - barH - 4} textAnchor="middle" className="text-[10px] fill-slate-300 font-bold">{d.value.toFixed(1)}</text>
               {d.id ? <a href={`/sermons/${d.id}`}>{titleEl}</a> : titleEl}
             </g>
@@ -225,23 +230,35 @@ function DashboardInner() {
   const [churchBeliefs, setChurchBeliefs] = useState<string[]>([]);
   const [churchInfo, setChurchInfo] = useState<{ name: string; beliefsUrl: string } | null>(null);
   const [cbvResults, setCbvResults] = useState<Record<string, { title: string; referenced: boolean }[]>>({});
+  const [transcripts, setTranscripts] = useState<Record<string, string>>({});
+  const [isTenant, setIsTenant] = useState(false);
+
+  useEffect(() => { setIsTenant(!!resolveTenant()); }, []);
 
   useEffect(() => {
+    const loadData = (data: SermonData[]) => {
+      setSermons(data);
+      const detailMap: Record<string, SermonData> = {};
+      const cbvMap: Record<string, { title: string; referenced: boolean }[]> = {};
+      data.forEach((s: SermonData & { cbv?: { results?: { title: string; referenced: boolean }[] } }) => {
+        detailMap[s.id] = s;
+        if (s.cbv?.results) cbvMap[s.id] = s.cbv.results;
+      });
+      setDetails(detailMap);
+      setCbvResults(cbvMap);
+      setLoading(false);
+    };
+
     tenantFetch(apiUrl("/api/sermons/dashboard"))
-      .then((r) => r.json())
-      .then((data: SermonData[]) => {
-        setSermons(data);
-        const detailMap: Record<string, SermonData> = {};
-        const cbvMap: Record<string, { title: string; referenced: boolean }[]> = {};
-        data.forEach((s: SermonData & { cbv?: { results?: { title: string; referenced: boolean }[] } }) => {
-          detailMap[s.id] = s;
-          if (s.cbv?.results) cbvMap[s.id] = s.cbv.results;
-        });
-        setDetails(detailMap);
-        setCbvResults(cbvMap);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((data: SermonData[]) => loadData(data))
+      .catch(() => {
+        // Fallback to static sample data on tenant subdomains
+        fetch("/sample-dashboard.json")
+          .then((r) => r.ok ? r.json() : [])
+          .then((data: SermonData[]) => loadData(data))
+          .catch(() => setLoading(false));
+      });
   }, []);
 
   const pastors = [...new Set(sermons.map((s) => s.pastor).filter(Boolean))] as string[];
@@ -263,6 +280,23 @@ function DashboardInner() {
       }
     }).catch(() => { setChurchBeliefs([]); setChurchInfo(null); });
   }, [pastorFilter]);
+
+  // Fetch transcripts for heatmap
+  useEffect(() => {
+    if (!filtered.length) return;
+    const missing = filtered.filter(s => !transcripts[s.id]).slice(0, 10);
+    if (!missing.length) return;
+    Promise.all(missing.map(s =>
+      fetch(apiUrl(`/api/sermons/${s.id}/transcript`)).then(r => r.ok ? r.json() : null).catch(() => null)
+    )).then(results => {
+      const newT = { ...transcripts };
+      missing.forEach((s, i) => {
+        const r = results[i];
+        if (r?.fullText) newT[s.id] = r.fullText;
+      });
+      setTranscripts(newT);
+    });
+  }, [filtered.length, pastorFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // KPIs
   const avgPsr = filtered.length ? filtered.reduce((s, x) => s + psr(x), 0) / filtered.length : 0;
@@ -299,7 +333,9 @@ function DashboardInner() {
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-6">
-      <Nav />
+      <TenantMenu />
+      {isTenant && <SampleNav />}
+      {!isTenant && <Nav />}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -307,6 +343,9 @@ function DashboardInner() {
           <p className="text-xs text-gray-500">Pastor performance overview</p>
         </div>
         <div className="flex items-center gap-3">
+          {isTenant ? (
+            <span className="text-sm font-medium text-gray-700">{pastorFilter}</span>
+          ) : (
           <select
             value={pastorFilter}
             onChange={(e) => setPastorFilter(e.target.value)}
@@ -316,6 +355,7 @@ function DashboardInner() {
             <option value="all">All Pastors</option>
             {pastors.sort().map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+          )}
         </div>
       </div>
 
@@ -324,7 +364,7 @@ function DashboardInner() {
         <KpiCard label="Total Sermons" value={String(filtered.length)} />
         <KpiCard label="Avg PSR" value={avgPsr.toFixed(1)} color={color(avgPsr)} />
         <KpiCard label="Best Score" value={bestSermon ? psr(bestSermon).toFixed(1) : "—"} sub={bestSermon?.title} color={bestSermon ? color(psr(bestSermon)) : undefined} />
-        <KpiCard label="Trend" value={trend > 0 ? `+${trend.toFixed(1)}` : trend.toFixed(1)} sub="vs previous" color={trend > 0 ? "#22c55e" : trend < 0 ? "#ef4444" : "#9ca3af"} />
+        <KpiCard label="Avg Duration" value={(() => { const w = filtered.filter(s => s.duration); return w.length ? `${Math.round(w.reduce((s, x) => s + (x.duration || 0), 0) / w.length / 60)}m` : "—"; })()} sub="minutes" color="#6366f1" />
       </div>
 
       {/* Charts */}
@@ -347,6 +387,35 @@ function DashboardInner() {
         </div>
       </div>
 
+      {/* Duration & Sermon Type Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <BarChart
+            label="Sermon Duration (Last 6)"
+            colorFn={() => "#3b82f6"}
+            data={[...filtered].filter(s => s.duration).sort((a, b) => a.date.localeCompare(b.date)).slice(-6).map((s) => ({ name: s.title, value: Math.round((s.duration || 0) / 60) }))}
+          />
+          {(() => {
+            const withDuration = filtered.filter(s => s.duration);
+            const avg = withDuration.length ? Math.round(withDuration.reduce((sum, s) => sum + (s.duration || 0), 0) / withDuration.length / 60) : 0;
+            return avg ? <p className="text-xs text-gray-500 mt-1 text-center">Average: {avg} min</p> : null;
+          })()}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          {(() => {
+            const typeCounts: Record<string, number> = {};
+            filtered.forEach(s => { const t = (s as unknown as { sermonType?: string }).sermonType || "unknown"; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+            const typeColors: Record<string, string> = { expository: "#3b82f6", topical: "#f59e0b", narrative: "#10b981", survey: "#8b5cf6", unknown: "#9ca3af" };
+            const data = Object.entries(typeCounts).map(([name, value]) => ({ name, value, color: typeColors[name] || "#9ca3af" }));
+            return data.length > 0 ? (
+              <PieChart label="Sermon Types" data={data} />
+            ) : (
+              <p className="text-xs text-gray-400 p-4">No sermon type data</p>
+            );
+          })()}
+        </div>
+      </div>
+
       {/* Category Averages — full width */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
         {Object.keys(catAvgs).length > 0 ? (
@@ -361,17 +430,17 @@ function DashboardInner() {
 
       {/* Scripture Heatmap */}
       {(() => {
-        const transcripts = filtered
-          .filter((s) => (details[s.id] as unknown as { transcript?: { fullText?: string } })?.transcript?.fullText)
-          .map((s) => (details[s.id] as unknown as { transcript?: { fullText?: string } }).transcript!.fullText!);
-        const bookCounts = transcripts.length > 0 ? extractBookCounts(transcripts) : {};
-        return transcripts.length > 0 ? (
+        const texts = filtered
+          .map((s) => transcripts[s.id] || (details[s.id] as unknown as { transcript?: { fullText?: string } })?.transcript?.fullText)
+          .filter(Boolean) as string[];
+        const bookCounts = texts.length > 0 ? extractBookCounts(texts) : {};
+        return texts.length > 0 ? (
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
             <ScriptureHeatmap counts={bookCounts} />
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-            <p className="text-xs text-gray-400">Scripture heatmap available on individual sermon pages</p>
+            <p className="text-xs text-gray-400">Loading scripture heatmap...</p>
           </div>
         );
       })()}
