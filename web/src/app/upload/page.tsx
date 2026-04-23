@@ -3,28 +3,20 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Nav from "@/components/Nav";
 import { apiUrl, tenantFetch } from "@/lib/api";
 
-const ALLOWED_AUDIO = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a"];
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".html", ".htm", ".rtf", ".xml", ".csv", ".docx", ".odt"];
-const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
 const MAX_TEXT_SIZE = 10 * 1024 * 1024;
 const YT_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)[\w-]+/;
 
-type DetectedType = null | "audio" | "text" | "youtube";
+type DetectedType = null | "text" | "youtube";
 
 function isTextFile(f: File): boolean {
   const ext = f.name.toLowerCase().slice(f.name.lastIndexOf("."));
   return ALLOWED_TEXT_EXT.includes(ext);
 }
 
-function isAudioFile(f: File): boolean {
-  return ALLOWED_AUDIO.includes(f.type);
-}
-
-function detectFileType(f: File): "audio" | "text" | null {
-  if (isAudioFile(f)) return "audio";
+function detectFileType(f: File): "text" | null {
   if (isTextFile(f)) return "text";
   return null;
 }
@@ -74,15 +66,11 @@ export default function UploadPage() {
     setError("");
     const type = detectFileType(f);
     if (!type) {
-      setError("Unsupported format. Upload MP3, WAV, M4A, TXT, DOCX, MD, RTF, ODT, HTML, CSV, or XML.");
+      setError("Unsupported format. Upload TXT, DOCX, MD, RTF, ODT, HTML, CSV, or XML.");
       return;
     }
-    if (type === "audio" && f.size > MAX_AUDIO_SIZE) {
-      setError("File too large. Max 100MB for audio.");
-      return;
-    }
-    if (type === "text" && f.size > MAX_TEXT_SIZE) {
-      setError("File too large. Max 10MB for text files.");
+    if (f.size > MAX_TEXT_SIZE) {
+      setError("File too large. Max 10MB.");
       return;
     }
     setFile(f);
@@ -124,7 +112,7 @@ export default function UploadPage() {
 
   async function handleSubmit() {
     if (detected === "youtube" && (!youtubeUrl.trim() || !ytStart.trim() || !ytEnd.trim())) return;
-    if ((detected === "audio" || detected === "text") && !file) return;
+    if (detected === "text" && !file) return;
     setUploading(true);
     setError("");
     try {
@@ -159,7 +147,7 @@ export default function UploadPage() {
       if (title.trim()) form.append("title", title.trim());
       if (pastor.trim()) form.append("pastor", pastor.trim());
 
-      const endpoint = detected === "text" ? "/api/sermons/text" : "/api/sermons";
+      const endpoint = "/api/sermons/text";
 
       const xhr = new XMLHttpRequest();
       xhr.upload.onprogress = (e) => {
@@ -196,8 +184,6 @@ export default function UploadPage() {
     ? <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">youtube</span>
     : detected === "text"
     ? <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-500">text</span>
-    : detected === "audio"
-    ? <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-500">audio</span>
     : null;
 
   const pastorInput = !isNewPastor ? (
@@ -223,7 +209,6 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen p-4">
       <div className="max-w-[400px] mx-auto mt-6">
-        <Nav />
         <h1 className="text-xl text-gray-900 font-semibold leading-tight mb-6">Upload Sermon</h1>
       </div>
       <div className="w-full max-w-[400px] mx-auto text-center">
@@ -256,11 +241,11 @@ export default function UploadPage() {
             }}
           >
             <p className="text-gray-500 mb-1">Drop a file or paste a link</p>
-            <p className="text-xs text-gray-400">Audio · Text · YouTube URL</p>
+            <p className="text-xs text-gray-400">Text file · YouTube URL</p>
             <input
               ref={fileRef}
               type="file"
-              accept=".mp3,.wav,.m4a,.txt,.docx,.md,.rtf,.odt,.html,.htm,.csv,.xml"
+              accept=".txt,.docx,.md,.rtf,.odt,.html,.htm,.csv,.xml"
               aria-hidden="true"
               className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
@@ -297,7 +282,7 @@ export default function UploadPage() {
             <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600">Choose a different source</button>
           </div>
         ) : (
-          /* ── File detected (audio or text) ── */
+          /* ── File detected ── */
           <div className="space-y-4">
             <p className="text-sm text-left">
               <span className="text-green-500">✓</span> {file!.name}{" "}
@@ -310,7 +295,7 @@ export default function UploadPage() {
             {pastorInput}
             <button onClick={handleSubmit} disabled={uploading || !title.trim() || !pastor.trim()}
               className="w-full bg-blue-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
-              {uploading ? "Uploading..." : "Analyze Sermon"}
+              {uploading ? "Analyzing..." : "Analyze Sermon"}
             </button>
             {uploading && (
               <div role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress" className="w-full bg-gray-200 rounded-full h-1">

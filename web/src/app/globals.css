@@ -22,83 +22,14 @@
 
 body {
   font-family: "Inter", system-ui, -apple-system, sans-serif;
-  background: #303234;
-  color: #e2e8f0;
+  background: #ffffff;
+  color: #111827;
   min-height: 100vh;
 }
 
-/* ── Dark theme overrides ── */
-/* Remap light backgrounds to translucent white on dark */
-.bg-white { background-color: rgba(255,255,255,0.08) !important; }
-.bg-gray-50 { background-color: rgba(255,255,255,0.04) !important; }
-.bg-gray-100 { background-color: rgba(255,255,255,0.08) !important; }
-.hover\:bg-gray-50:hover { background-color: rgba(255,255,255,0.06) !important; }
-
-/* Borders */
-.border-gray-200, .border-gray-100, .border-gray-50 {
-  border-color: rgba(255,255,255,0.12) !important;
-}
-
-/* Text: remap grays to light equivalents */
-.text-gray-900 { color: #f1f5f9 !important; }
-.text-gray-800 { color: #e2e8f0 !important; }
-.text-gray-700 { color: #cbd5e1 !important; }
-.text-gray-600 { color: #94a3b8 !important; }
-.text-gray-500 { color: #64748b !important; }
-.text-gray-400 { color: #475569 !important; }
-.hover\:text-gray-900:hover { color: #f1f5f9 !important; }
-.hover\:text-gray-600:hover { color: #94a3b8 !important; }
-
-/* Links: brighten blue for dark bg */
-.text-blue-600 { color: #60a5fa !important; }
-.text-blue-700 { color: #93c5fd !important; }
-.hover\:text-blue-600:hover { color: #93c5fd !important; }
-
-/* Badges / pills */
-.bg-blue-100 {  background-color: #e5e7eb !important; }
-.text-blue-700 { color: #93c5fd !important; }
-.bg-gray-100.text-gray-600,
-.bg-gray-100 {  background-color: #e5e7eb !important; }
-
-/* Form inputs & selects */
-input, select, textarea {
-   background-color: #e5e7eb !important;
-  color: #e2e8f0 !important;
-  border-color: rgba(255,255,255,0.15) !important;
-}
-input::placeholder, textarea::placeholder { color: #64748b !important; }
-input:focus, select:focus, textarea:focus {
-  border-color: #60a5fa !important;
-}
-option { background-color: #1e293b; color: #e2e8f0; }
-
-/* Red accents (errors, delete) */
-.text-red-500 { color: #f87171 !important; }
-.text-red-600 { color: #f87171 !important; }
-
-/* Green accents */
-.text-green-500 { color: #4ade80 !important; }
-.text-green-600 { color: #4ade80 !important; }
-
-/* Purple / violet badges */
-.bg-purple-100 {  background-color: #e5e7eb !important; }
-.text-purple-700 { color: #c4b5fd !important; }
-
-/* Table header hover */
-th.hover\:text-gray-900:hover { color: #f1f5f9 !important; }
-
-/* Buttons: keep blue/red buttons as-is, they already work on dark */
-.bg-blue-600 { background-color: #2563eb !important; }
-.hover\:bg-blue-700:hover { background-color: #1d4ed8 !important; }
-
-/* SVG fill overrides for charts */
-.fill-gray-500 { fill: #64748b !important; }
-.fill-gray-600 { fill: #94a3b8 !important; }
-.fill-gray-700 { fill: #cbd5e1 !important; }
-
 /* ── Per-tenant theme overrides ── */
 
-/* Theme utility classes — default (main site) values */
+/* Theme utility classes — used by tenant subdomain pages */
 .theme-accent { color: #a5b4fc; }
 .theme-muted { color: rgba(165,180,252,0.7); }
 .theme-orb-1 { background: var(--orb1); }

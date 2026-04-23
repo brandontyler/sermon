@@ -48,7 +48,7 @@ function BarChart({ data, label, colorFn }: { data: { name: string; value: numbe
           return (
             <g key={i}>
               <rect x={x} y={h - barH} width={barW} height={barH} fill={cfn(d.value)} rx={3} />
-              <text x={x + barW / 2} y={h - barH - 4} textAnchor="middle" className="text-[10px] fill-slate-300 font-bold">{d.value.toFixed(1)}</text>
+              <text x={x + barW / 2} y={h - barH - 4} textAnchor="middle" className="text-[10px] fill-slate-600 font-bold">{d.value.toFixed(1)}</text>
               {d.id ? <a href={`/sermons/${d.id}`}>{titleEl}</a> : titleEl}
             </g>
           );
@@ -81,7 +81,7 @@ function LineChart({ data, label }: { data: { name: string; value: number; id?: 
           return (
             <g key={i}>
               <circle cx={p.x} cy={p.y} r={4} fill={color(data[i].value)} stroke="#1e293b" strokeWidth={2} />
-              <text x={p.x} y={p.y - 10} textAnchor="middle" className="text-[9px] fill-slate-300 font-bold">{data[i].value.toFixed(1)}</text>
+              <text x={p.x} y={p.y - 10} textAnchor="middle" className="text-[9px] fill-slate-600 font-bold">{data[i].value.toFixed(1)}</text>
               {data[i].id ? <a href={`/sermons/${data[i].id}`}>{titleEl}</a> : titleEl}
             </g>
           );

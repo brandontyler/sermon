@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Nav from "@/components/Nav";
 import { SermonSummary, scoreColor } from "@/lib/types";
 import { apiUrl, tenantFetch } from "@/lib/api";
 
@@ -76,7 +75,6 @@ export default function SermonsPage() {
 
   return (
     <div className="max-w-[960px] mx-auto p-4 py-8">
-      <Nav />
       <div className="flex gap-3 mb-4">
         <select
           value={typeFilter}

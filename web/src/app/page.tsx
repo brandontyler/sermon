@@ -1,78 +1,178 @@
 import Link from "next/link";
 import TenantMenu from "@/components/TenantMenu";
-import ActionButtons from "@/components/ActionButtons";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen text-white overflow-hidden relative">
-      {/* Animated background orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full blur-3xl animate-pulse theme-orb-1" />
-        <div className="absolute top-1/3 -right-32 w-80 h-80 rounded-full blur-3xl animate-pulse [animation-delay:1s] theme-orb-2" />
-        <div className="absolute -bottom-20 left-1/3 w-72 h-72 rounded-full blur-3xl animate-pulse [animation-delay:2s] theme-orb-3" />
-      </div>
+    <div>
 
-      <div className="relative z-10 max-w-[900px] mx-auto px-6 py-16 flex flex-col items-center min-h-screen justify-center">
-        {/* Tenant menu (subdomain only) */}
-        <TenantMenu />
+      {/* Tenant menu (subdomain only) */}
+      <TenantMenu />
 
-        {/* Logo / Title */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 flex items-center justify-center text-2xl font-bold shadow-lg shadow-orange-500/30">
-              P
-            </div>
-            <div className="text-left">
-              <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-white via-blue-100 to-purple-200 bg-clip-text text-transparent">
-                PSR
-              </h1>
-              <p className="text-sm font-medium tracking-widest uppercase theme-accent">Pastor Sermon Rating</p>
-            </div>
+      {/* Hero */}
+      <section className="py-20 px-6 text-center">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="text-4xl font-bold text-[#111827] mb-6 leading-tight whitespace-nowrap">
+            Strengthen your voice in ministry
+          </h1>
+          <p className="text-xl text-[#4b5563] mb-10 leading-relaxed max-w-2xl mx-auto">
+            Upload a sermon and receive a data-driven score across 8 categories —
+            from Biblical Accuracy to Delivery. Clear insights to help every pastor
+            communicate with greater clarity and impact.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/upload"
+              className="px-8 py-3 text-base font-medium bg-[#2563eb] text-white rounded hover:bg-[#1d4ed8] transition-colors"
+            >
+              Upload a Sermon
+            </Link>
+            <Link
+              href="/sermons"
+              style={{ border: "1px solid #2563eb" }}
+              className="px-8 py-3 text-base font-medium text-[#2563eb] rounded hover:bg-[#eff6ff] transition-colors"
+            >
+              Browse Sermons
+            </Link>
           </div>
         </div>
+      </section>
 
-        {/* Mission statement */}
-        <div className="max-w-[680px] mb-8">
-          <p className="text-lg leading-relaxed text-center theme-muted">
-            Welcome to a new way of strengthening your voice in ministry. Our platform provides pastors and speakers with thoughtful, data&#8209;driven insights by analyzing uploaded sermon audio and comparing it against a carefully trained communication model. The goal isn&apos;t to critique or diminish—it&apos;s to illuminate strengths, highlight opportunities for growth, and support every pastor in delivering clearer, more impactful messages. With a warm, encouraging approach, we help communicators refine their craft so their words can reach hearts with even greater clarity and purpose.
+      {/* Pricing */}
+      <section style={{ background: "#f9fafb", borderTop: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb" }} className="py-16 px-6">
+        <div className="max-w-3xl mx-auto">
+          <p className="text-center text-sm font-semibold tracking-widest uppercase text-[#2563eb] mb-3">Pricing</p>
+          <h2 className="text-center text-3xl font-bold text-[#111827] mb-2">Simple, transparent pricing</h2>
+          <p className="text-center text-sm text-[#6b7280] mb-10">No hidden fees. Cancel anytime.</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+            {/* Basic */}
+            <div style={{ border: "1px solid #e5e7eb", background: "#ffffff" }} className="rounded-lg p-8 flex flex-col">
+              <h3 className="text-base font-semibold text-[#111827] mb-1">Basic</h3>
+              <div className="flex items-baseline gap-1 mb-1">
+                <span className="text-4xl font-bold text-[#111827]">$7</span>
+                <span className="text-sm text-[#6b7280]">/ month</span>
+              </div>
+              <p className="text-xs text-[#6b7280] mb-6">Billed monthly</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> 4 sermon uploads per month
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Text file &amp; YouTube uploads
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Full 8-category scoring
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Transcript &amp; breakdown
+                </li>
+              </ul>
+              <Link
+                href="/upload"
+                style={{ border: "1px solid #2563eb" }}
+                className="block text-center py-2.5 rounded text-sm font-medium text-[#2563eb] hover:bg-[#eff6ff] transition-colors"
+              >
+                Get started
+              </Link>
+            </div>
+
+            {/* Pro */}
+            <div style={{ border: "2px solid #2563eb", background: "#ffffff" }} className="rounded-lg p-8 flex flex-col relative">
+              <span
+                style={{ background: "#2563eb" }}
+                className="absolute -top-3 left-1/2 -translate-x-1/2 text-white text-xs font-semibold px-3 py-1 rounded-full"
+              >
+                Most Popular
+              </span>
+              <h3 className="text-base font-semibold text-[#111827] mb-1">Pro</h3>
+              <div className="flex items-baseline gap-1 mb-1">
+                <span className="text-4xl font-bold text-[#111827]">$14</span>
+                <span className="text-sm text-[#6b7280]">/ month</span>
+              </div>
+              <p className="text-xs text-[#6b7280] mb-6">Billed monthly</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> 10 sermon uploads per month
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Audio file processing
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Text file &amp; YouTube uploads
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Full 8-category scoring
+                </li>
+                <li className="flex items-center gap-2 text-sm text-[#374151]">
+                  <span className="text-[#2563eb] font-bold">✓</span> Transcript &amp; breakdown
+                </li>
+              </ul>
+              <Link
+                href="/upload"
+                className="block text-center py-2.5 rounded text-sm font-medium bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
+              >
+                Get started
+              </Link>
+            </div>
+
+          </div>
+
+          <p className="text-center text-xs text-[#9ca3af] mt-6">
+            Payments processed securely via Stripe. Cancel anytime. No contracts.
           </p>
         </div>
+      </section>
 
-        {/* Big action buttons (main site only) */}
-        <ActionButtons />
-
-        {/* Design Principles */}
-        <div className="mt-8 max-w-[720px] w-full">
-          <h2 className="text-center text-sm font-semibold tracking-widest uppercase mb-8 theme-accent">Our Principles</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-              <div className="text-lg mb-2">📖</div>
-              <h3 className="font-semibold text-white text-sm mb-1">Denomination-Neutral</h3>
-              <p className="text-xs leading-relaxed theme-muted">Biblical Accuracy measures whether a pastor correctly handles the text — not whether their theology is &ldquo;right.&rdquo; A Calvinist and an Arminian can both score 90+.</p>
+      {/* Principles */}
+      <section className="py-16 px-6">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-center text-sm font-semibold tracking-widest uppercase text-[#2563eb] mb-3">
+            Our Principles
+          </p>
+          <h2 className="text-center text-3xl font-bold text-[#111827] mb-10">
+            Built for pastors. Grounded in the Word.
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div style={{ border: "1px solid #e5e7eb", background: "#ffffff" }} className="rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="text-2xl mb-3">📖</div>
+              <h3 className="text-base font-semibold text-[#111827] mb-2">Denomination-Neutral</h3>
+              <p className="text-sm text-[#6b7280] leading-relaxed">
+                Biblical Accuracy measures whether a pastor correctly handles the text — not whether their theology is &ldquo;right.&rdquo; A Calvinist and an Arminian can both score 90+.
+              </p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-              <div className="text-lg mb-2">🎯</div>
-              <h3 className="font-semibold text-white text-sm mb-1">Lighthouse, Not a Dashboard</h3>
-              <p className="text-xs leading-relaxed theme-muted">Each sermon gets a detailed audit — big score, category breakdown, and expandable reasoning. The numbers speak for themselves.</p>
+            <div style={{ border: "1px solid #e5e7eb", background: "#ffffff" }} className="rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="text-2xl mb-3">🎯</div>
+              <h3 className="text-base font-semibold text-[#111827] mb-2">Lighthouse, Not a Dashboard</h3>
+              <p className="text-sm text-[#6b7280] leading-relaxed">
+                Each sermon gets a detailed audit — big score, category breakdown, and expandable reasoning. The numbers speak for themselves.
+              </p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-              <div className="text-lg mb-2">🚦</div>
-              <h3 className="font-semibold text-white text-sm mb-1">Three Colors</h3>
-              <p className="text-xs leading-relaxed theme-muted">Green (70+), yellow (50–69), red (below 50). Simple, clear, and instantly readable at a glance.</p>
+            <div style={{ border: "1px solid #e5e7eb", background: "#ffffff" }} className="rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="text-2xl mb-3">🚦</div>
+              <h3 className="text-base font-semibold text-[#111827] mb-2">Three Colors</h3>
+              <p className="text-sm text-[#6b7280] leading-relaxed">
+                Green (70+), yellow (50–69), red (below 50). Simple, clear, and instantly readable at a glance.
+              </p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-5">
-              <div className="text-lg mb-2">🤝</div>
-              <h3 className="font-semibold text-white text-sm mb-1">Growth, Not Critique</h3>
-              <p className="text-xs leading-relaxed theme-muted">We penalize misquoting and proof-texting — not theological convictions. The goal is to illuminate strengths and highlight opportunities.</p>
+            <div style={{ border: "1px solid #e5e7eb", background: "#ffffff" }} className="rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="text-2xl mb-3">🤝</div>
+              <h3 className="text-base font-semibold text-[#111827] mb-2">Growth, Not Critique</h3>
+              <p className="text-sm text-[#6b7280] leading-relaxed">
+                We penalize misquoting and proof-texting — not theological convictions. The goal is to illuminate strengths and highlight opportunities.
+              </p>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Footer accent */}
-        <p className="mt-16 text-xs tracking-wide theme-muted opacity-60">
+      {/* Footer */}
+      <footer style={{ borderTop: "1px solid #e5e7eb" }} className="py-8 px-6 text-center">
+        <p className="text-sm text-[#6b7280]">
           Strengthening the voice of ministry — one sermon at a time
         </p>
-      </div>
+      </footer>
+
     </div>
   );
 }
