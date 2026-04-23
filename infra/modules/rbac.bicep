@@ -3,14 +3,14 @@
 param functionAppPrincipalId string
 param keyVaultName string
 param storageName string
-param openaiName string
+//param openaiName string
 param speechName string
 param cosmosName string
 
 // --- Existing resource references ---
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: keyVaultName }
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageName }
-resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: openaiName }
+//resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: openaiName }
 resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: speechName }
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-12-01-preview' existing = { name: cosmosName }
 
@@ -37,15 +37,15 @@ resource storageRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 // Cognitive Services User (OpenAI)
-resource openaiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(openai.id, functionAppPrincipalId, 'a97b65f3-24c7-4388-baec-2e87135dc908')
-  scope: openai
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')
-    principalId: functionAppPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
+//resource openaiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+//  name: guid(openai.id, functionAppPrincipalId, 'a97b65f3-24c7-4388-baec-2e87135dc908')
+//  scope: openai
+//  properties: {
+//    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')
+//    principalId: functionAppPrincipalId
+//    principalType: 'ServicePrincipal'
+//  }
+//}
 
 // Cognitive Services User (Speech)
 resource speechRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

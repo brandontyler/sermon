@@ -15,8 +15,8 @@ trap 'echo "✗ Deploy failed at line $LINENO (exit $?)" >&2' ERR
 SECONDS=0
 
 ENV="dev"
-RG="rg-sermon-rating-dev"
-LOCATION="eastus2"
+RG="agents01-sermons-rg-centralus"
+LOCATION="centralus"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CMD="${1:-all}"
@@ -24,7 +24,7 @@ CMD="${1:-all}"
 # Resource names (derived from env)
 KV_NAME="psr-kv-${ENV}-001"
 FUNC_NAME="psr-functions-${ENV}"
-SWA_NAME="psr-web-${ENV}"
+#SWA_NAME="psr-web-${ENV}"
 OPENAI_NAME="psr-openai-${ENV}"
 SPEECH_NAME="psr-speech-${ENV}"
 COSMOS_NAME="psr-cosmos-${ENV}"
@@ -134,6 +134,15 @@ deploy_infra() {
 
   # Read outputs from the completed deployment
   DEPLOY_OUTPUT=$(az deployment group show -g "$RG" -n main --query 'properties.outputs' -o json)
+	COSMOS_NAME=$(parse_output cosmosName)
+	STORAGE_NAME=$(parse_output storageName)
+	SPEECH_NAME=$(parse_output speechName)
+	#OPENAI_NAME=$(parse_output openaiName)
+	KV_NAME=$(parse_output keyVaultName)
+	SWA_HOST=$(parse_output swaDefaultHostname)
+	FUNC_NAME=$(parse_output functionAppName)
+	SWA_NAME=$(parse_output swaName)
+
 
   # Create Cosmos DB container (Bicep can't create serverless containers reliably)
   echo "[·] Ensuring Cosmos DB container..."
@@ -145,7 +154,7 @@ deploy_infra() {
   fi
 
   # Read actual SWA hostname from deployment output (auto-generated, can't predict)
-  SWA_HOST=$(parse_output swaDefaultHostname)
+  #SWA_HOST=$(parse_output swaDefaultHostname)
 
   echo "    ✓ Secrets populated via Bicep (server-side)"
 

@@ -6,7 +6,7 @@ targetScope = 'resourceGroup'
 
 param location string
 param environment string
-param openaiModelVersions object
+//param openaiModelVersions object
 
 @secure()
 param adminKey string
@@ -46,14 +46,14 @@ module translator 'modules/translator.bicep' = {
 }
 
 // --- Azure OpenAI + model deployments ---
-module openai 'modules/openai.bicep' = {
-  name: 'openai'
-  params: {
-    location: location
-    environment: environment
-    modelVersions: openaiModelVersions
-  }
-}
+//module openai 'modules/openai.bicep' = {
+ // name: 'openai'
+ // params: {
+ //   location: location
+ //   environment: environment
+ //   modelVersions: openaiModelVersions
+ // }
+//}
 
 // --- Key Vault (after services it reads keys from) ---
 module keyvault 'modules/keyvault.bicep' = {
@@ -63,7 +63,7 @@ module keyvault 'modules/keyvault.bicep' = {
     environment: environment
     tenantId: subscription().tenantId
     speechName: speech.outputs.name
-    openaiName: openai.outputs.name
+   // openaiName: openai.outputs.name
     cosmosName: cosmos.outputs.name
     storageName: storage.outputs.name
     adminKey: adminKey
@@ -109,7 +109,7 @@ module rbac 'modules/rbac.bicep' = {
     functionAppPrincipalId: functions.outputs.principalId
     keyVaultName: keyvault.outputs.name
     storageName: storage.outputs.name
-    openaiName: openai.outputs.name
+   // openaiName: openai.outputs.name
     speechName: speech.outputs.name
     cosmosName: cosmos.outputs.name
   }
@@ -120,6 +120,8 @@ output functionAppName string = functions.outputs.name
 output swaDefaultHostname string = swa.outputs.defaultHostname
 output keyVaultName string = keyvault.outputs.name
 output speechName string = speech.outputs.name
-output openaiName string = openai.outputs.name
+//output openaiName string = openai.outputs.name
 output cosmosName string = cosmos.outputs.name
 output storageName string = storage.outputs.name
+output swaName string = swa.outputs.name
+

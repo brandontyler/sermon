@@ -9,14 +9,16 @@ import orchestrators
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # Register HTTP route blueprints
-app.register_functions(sermons.bp)
-app.register_functions(feeds.bp)
-app.register_functions(churches.bp)
-app.register_functions(admin.bp)
-app.register_functions(users.bp)
+app.register_blueprint(sermons.bp)
+app.register_blueprint(feeds.bp)
+app.register_blueprint(churches.bp)
+app.register_blueprint(admin.bp)
+app.register_blueprint(users.bp)
+app.register_blueprint(orchestrators.bp)
+
 
 # Register Durable Functions (orchestrators + activities)
-app.register_functions(orchestrators.bp)
+#app.register_functions(orchestrators.bp)
 
 # ── Re-exports for backward compatibility (tests import from function_app) ──
 from helpers import (  # noqa: F401

@@ -2,17 +2,20 @@
 param location string
 param environment string
 
+var suffix = take(uniqueString(resourceGroup().id), 6)
+
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-12-01-preview' = {
-  name: 'psr-cosmos-${environment}'
+  name: toLower('psrcosmos${environment}${suffix}')
   location: location
   kind: 'GlobalDocumentDB'
   properties: {
     databaseAccountOfferType: 'Standard'
-    capabilities: [{ name: 'EnableServerless' }]
+    capacityMode: 'Serverless'
     locations: [{ locationName: location, failoverPriority: 0 }]
     consistencyPolicy: { defaultConsistencyLevel: 'Session' }
   }
 }
+
 
 resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-12-01-preview' = {
   parent: cosmos

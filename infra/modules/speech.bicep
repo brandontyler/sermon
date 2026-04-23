@@ -2,13 +2,17 @@
 param location string
 param environment string
 
+var suffix = take(uniqueString(resourceGroup().id), 6)
+
+
 resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
-  name: 'psr-speech-${environment}'
+  name: 'psr-speech-${environment}${suffix}'
   location: location
   kind: 'SpeechServices'
   sku: { name: 'S0' }
   properties: {
     publicNetworkAccess: 'Enabled'
+    disableLocalAuth: false  
   }
 }
 

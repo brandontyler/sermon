@@ -3,7 +3,7 @@ param location string
 param environment string
 param tenantId string
 param speechName string
-param openaiName string
+//param openaiName string
 param cosmosName string
 param storageName string
 
@@ -14,8 +14,10 @@ param webshareProxyUsername string
 @secure()
 param webshareProxyPassword string
 
+var suffix = take(uniqueString(resourceGroup().id), 6)
+
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'psr-kv-${environment}-001'
+  name: toLower('psrkv${environment}${suffix}')
   location: location
   properties: {
     sku: { family: 'A', name: 'standard' }
@@ -28,7 +30,7 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
 
 // --- Reference existing resources to extract keys server-side ---
 resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: speechName }
-resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: openaiName }
+//resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' existing = { name: openaiName }
 resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-12-01-preview' existing = { name: cosmosName }
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = { name: storageName }
 
@@ -45,23 +47,23 @@ resource speechEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   properties: { value: speech.properties.endpoint }
 }
 
-resource openaiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: kv
-  name: 'openai-key'
-  properties: { value: openai.listKeys().key1 }
-}
+//resource openaiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+//  parent: kv
+//  name: 'openai-key'
+//  properties: { value: openai.listKeys().key1 }
+//}
 
-resource openaiEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: kv
-  name: 'openai-endpoint'
-  properties: { value: openai.properties.endpoint }
-}
+//resource openaiEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+//  parent: kv
+//  name: 'openai-endpoint'
+//  properties: { value: openai.properties.endpoint }
+//}
 
-resource openaiApiVersion 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: kv
-  name: 'openai-api-version'
-  properties: { value: '2025-01-01-preview' }
-}
+//resource openaiApiVersion 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+//  parent: kv
+//  name: 'openai-api-version'
+//  properties: { value: '2025-01-01-preview' }
+//}
 
 resource cosmosConnectionString 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: kv

@@ -2,7 +2,9 @@
 param location string
 param environment string
 
-var storageName = 'psrstorage${environment}'
+// must be globally unique, lowercase, 3-24 chars
+var suffix = take(uniqueString(resourceGroup().id), 6)
+var storageName = toLower('psrsto${environment}${suffix}')
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageName

@@ -1,5 +1,4 @@
 azure-functions
-azure-functions-durable
 openai
 praat-parselmouth
 numpy
@@ -9,3 +8,6 @@ azure-storage-blob
 requests
 youtube-transcript-api
 feedparser
+azure-functions-durable>=1.2.8
+opentelemetry-api>=1.24.0,<2
+opentelemetry-sdk>=1.24.0,<2
