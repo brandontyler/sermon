@@ -10,7 +10,7 @@ const ALLOWED_AUDIO = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "
 const ALLOWED_TEXT_EXT = [".txt", ".md", ".html", ".htm", ".rtf", ".xml", ".csv", ".docx", ".odt"];
 const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
 const MAX_TEXT_SIZE = 10 * 1024 * 1024;
-const YT_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)[\w-]+/;
+const YT_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)[\w-]+/;
 
 type DetectedType = null | "audio" | "text" | "youtube";
 
@@ -244,12 +244,15 @@ export default function UploadPage() {
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              const text = e.dataTransfer.getData("text/plain");
-              if (text && YT_REGEX.test(text)) {
-                setYoutubeUrl(text.trim());
-                setInputValue(text.trim());
-                setDetected("youtube");
-                return;
+              const text = e.dataTransfer.getData("text/plain") || e.dataTransfer.getData("text/uri-list");
+              if (text) {
+                const line = text.split("\n").find((l) => YT_REGEX.test(l));
+                if (line) {
+                  setYoutubeUrl(line.trim());
+                  setInputValue(line.trim());
+                  setDetected("youtube");
+                  return;
+                }
               }
               const f = e.dataTransfer.files[0];
               if (f) handleFile(f);

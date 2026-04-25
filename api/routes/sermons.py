@@ -363,15 +363,30 @@ async def upload_youtube_sermon(req: func.HttpRequest, starter: df.DurableOrches
         else:
             ytt = YouTubeTranscriptApi()
 
-        fetched = ytt.fetch(video_id, languages=["en"])
+        # Retry up to 3 times — proxy rotates IPs, so a fresh attempt may succeed
+        import time as _time
+        last_err = None
+        for attempt in range(3):
+            try:
+                fetched = ytt.fetch(video_id, languages=["en"])
+                last_err = None
+                break
+            except Exception as fetch_err:
+                last_err = fetch_err
+                if attempt < 2:
+                    log.info(f"[upload_youtube] Attempt {attempt+1} failed for {video_id}, retrying: {fetch_err}")
+                    _time.sleep(1)
+        if last_err:
+            raise last_err
+
         filtered = [s for s in fetched if s.start >= start_sec and s.start < end_sec]
         if not filtered:
             return _json_response({"error": f"No transcript found between {body.get('start')} and {body.get('end')}. Check your timestamps."}, 400)
         transcript_text = " ".join(s.text for s in filtered)
     except Exception as e:
-        err_str = str(e)
+        err_str = str(e).lower()
         log.warning(f"[upload_youtube] Failed to fetch transcript for {video_id}: {e}")
-        if "blocking" in err_str.lower() or "ip" in err_str.lower() or "RequestBlocked" in err_str or "IpBlocked" in err_str:
+        if any(kw in err_str for kw in ("blocking", "blocked", "requestblocked", "ipblocked", "429", "/sorry", "max retries")):
             return _json_response({
                 "error": "YouTube is blocking our server. Please use the text upload instead — open the YouTube video, click '...' → 'Show transcript', copy the text, paste it into a .txt file, and upload it.",
                 "code": "IP_BLOCKED",
