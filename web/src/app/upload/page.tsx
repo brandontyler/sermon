@@ -129,17 +129,29 @@ export default function UploadPage() {
     setError("");
     try {
       if (detected === "youtube") {
-        const res = await fetch(apiUrl("/api/sermons/youtube"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: youtubeUrl.trim(),
-            start: ytStart.trim(),
-            end: ytEnd.trim(),
-            title: title.trim() || undefined,
-            pastor: pastor.trim() || undefined,
-          }),
-        });
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 60000);
+        let res: Response;
+        try {
+          res = await fetch(apiUrl("/api/sermons/youtube"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: ctrl.signal,
+            body: JSON.stringify({
+              url: youtubeUrl.trim(),
+              start: ytStart.trim(),
+              end: ytEnd.trim(),
+              title: title.trim() || undefined,
+              pastor: pastor.trim() || undefined,
+            }),
+          });
+        } catch {
+          // Timeout or network error — sermon may be processing, go to list
+          clearTimeout(timer);
+          router.push("/sermons");
+          return;
+        }
+        clearTimeout(timer);
         const data = await res.json();
         if (!res.ok) {
           if (data.code === "IP_BLOCKED") {
